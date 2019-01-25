@@ -2,11 +2,6 @@ from mo_space import space_priority
 
 
 class Index:
-    """
-    The Index class.
-    capability: index labeled by space name with a number
-    """
-
     def __init__(self, name):
         """
         The Index class to handle MO space and label

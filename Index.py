@@ -10,7 +10,7 @@ class Index:
 
         check_str = isinstance(name, str)
         if not check_str:
-            raise ValueError("Index name has to be string type.")
+            raise TypeError("Index name has to be string type.")
 
         s = name[0]
         n = name[1:]
@@ -61,3 +61,12 @@ class Index:
         if dollar:
             out = "$" + out + "$"
         return out
+
+    def is_beta(self):
+        return self.space.isupper()
+
+    def to_beta(self):
+        return Index(self.name.upper())
+
+    def to_alpha(self):
+        return Index(self.name.lower())

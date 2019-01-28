@@ -254,19 +254,6 @@ class IndicesAntisymmetric(Indices):
         """ Return the number of multiset permutations of this Indices object. """
         return len(list(multiset_permutations([index.space for index in self.indices])))
 
-
-@Indices.register_subclass('spin-orbital')
-class IndicesSpinOrbital(IndicesAntisymmetric):
-    def __init__(self, list_of_indices):
-        """
-        Indices represented by spin orbitals.
-        :param list_of_indices: list of indices (see IndicesBase)
-        """
-        IndicesAntisymmetric.__init__(self, list_of_indices)
-        for index in self.indices:
-            if index.is_beta():
-                raise ValueError("Spin-orbital indices should all be in lowercase.")
-
     def latex_permute_format(self):
         """
         Compute the multiset-permutation form of this Indices object for latex.
@@ -304,6 +291,19 @@ class IndicesSpinOrbital(IndicesAntisymmetric):
                 permuted[i] = original_ordering[index]
             yield (-1) ** (self.sort_and_count_inversions(permuted)[1]), ",".join(map(str, indices))
 
+
+@Indices.register_subclass('spin-orbital')
+class IndicesSpinOrbital(IndicesAntisymmetric):
+    def __init__(self, list_of_indices):
+        """
+        Indices represented by spin orbitals.
+        :param list_of_indices: list of indices (see IndicesBase)
+        """
+        IndicesAntisymmetric.__init__(self, list_of_indices)
+        for index in self.indices:
+            if index.is_beta():
+                raise ValueError("Spin-orbital indices should all be in lowercase.")
+
     def generate_spin_cases(self):
         """
         Generate spin-integrated indices from spin-orbital indices.
@@ -340,17 +340,10 @@ class IndicesSpinIntegrated(IndicesAntisymmetric):
         Compute the multiset-permutation form of this Indices object for latex.
         :return: the number of multiset permutations and a string of permutation for latex
         """
-        nperm = self.n_multiset_permutation()
-        if nperm == 1 or (not self.spin_pure):
+        if not self.spin_pure:
             return 1, ""
         else:
-            indices = sorted(self.indices)
-            perm = indices[0].latex()
-            for i, index in enumerate(indices[1:], 1):
-                if index.space != indices[i - 1].space:
-                    perm += ' /'
-                perm += ' ' + index.latex()
-            return nperm, f"{{\\cal P}}({perm})"
+            super().latex_permute_format()
 
     def ambit_permute_format(self):
         """
@@ -359,22 +352,8 @@ class IndicesSpinIntegrated(IndicesAntisymmetric):
         """
         if not self.spin_pure:
             yield 1, ",".join(map(str, self.indices))
-            return
-
-        space_map = collections.defaultdict(list)
-        for index in self.indices:
-            space_map[index.space].append(index)
-        original_ordering = {v: i for i, v in enumerate(self)}
-        for space_perm in multiset_permutations([index.space for index in self.indices]):
-            permuted = [0] * self.size
-            next_available = {space: 0 for space in space_map.keys()}
-            indices = []
-            for i, space in enumerate(space_perm):
-                index = space_map[space][next_available[space]]
-                indices.append(index)
-                next_available[space] += 1
-                permuted[i] = original_ordering[index]
-            yield (-1) ** (self.sort_and_count_inversions(permuted)[1]), ",".join(map(str, indices))
+        else:
+            super().ambit_permute_format()
 
     def is_spin_pure(self):
         return self.spin_pure

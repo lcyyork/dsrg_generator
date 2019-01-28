@@ -29,7 +29,7 @@ class Indices:
                     indices.append(Index(i))
                 except (ValueError, TypeError):
                     print("Incoming list of Indices contains improper entries.")
-                    print("Cannot convert {} to Index type.".format(i))
+                    print(f"Cannot convert {i} to Index type.")
                     raise ValueError("Invalid input for Indices initialization.")
 
         # check if list_of_indices contains repeated indices
@@ -38,9 +38,21 @@ class Indices:
         if len(indices_set) != size:
             raise ValueError("Indices class does not support repeated indices.")
 
-        self.indices = indices
-        self.size = size
-        self.set = indices_set
+        self._indices = indices
+        self._size = size
+        self._set = indices_set
+
+    @property
+    def indices(self):
+        return self._indices
+
+    @property
+    def size(self):
+        return self._size
+
+    @property
+    def set(self):
+        return self._set
 
     def __repr__(self):
         return ", ".join(map(str, self.indices))
@@ -100,9 +112,9 @@ class Indices:
     def __iadd__(self, other):
         if len(self.set.intersection(other.set)) != 0:
             raise ValueError("Two Indices objects contain common Index, thus cannot be added.")
-        self.indices += other.indices
-        self.size += other.size
-        self.set = self.set.union(other.set)
+        self._indices += other.indices
+        self._size += other.size
+        self._set = self.set.union(other.set)
         return self
 
     def clone(self):
@@ -251,7 +263,7 @@ class IndicesSpinOrbital(IndicesAntisymmetric):
                 if index.space != indices[i - 1].space:
                     perm += ' /'
                 perm += ' ' + index.latex()
-            return nperm, "{{\\cal P}}({})".format(perm)
+            return nperm, f"{{\\cal P}}({perm})"
 
     def ambit_permute_format(self):
         """
@@ -290,13 +302,18 @@ class IndicesSpinIntegrated(IndicesAntisymmetric):
         :param list_of_indices: list of indices (see IndicesBase)
         """
         IndicesAntisymmetric.__init__(self, list_of_indices)
-        self.spin_count = [0, 0]
+        self._spin_count = [0, 0]
         for index in self.indices:
-            if index.is_beta():
-                self.spin_count[1] += 1
-            else:
-                self.spin_count[0] += 1
-        self.spin_pure = self.spin_count[0] == self.size or self.spin_count[1] == self.size
+            self._spin_count[index.is_beta()] += 1
+        self._spin_pure = self._spin_count[0] == self.size or self._spin_count[1] == self.size
+
+    @property
+    def spin_count(self):
+        return self._spin_count
+
+    @property
+    def spin_pure(self):
+        return self._spin_pure
 
     def latex_permute_format(self):
         """
@@ -313,7 +330,7 @@ class IndicesSpinIntegrated(IndicesAntisymmetric):
                 if index.space != indices[i - 1].space:
                     perm += ' /'
                 perm += ' ' + index.latex()
-            return nperm, "{{\\cal P}}({})".format(perm)
+            return nperm, f"{{\\cal P}}({perm})"
 
     def ambit_permute_format(self):
         """

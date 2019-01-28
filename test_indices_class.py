@@ -1,6 +1,6 @@
 import pytest
 from Index import Index
-from Indices import Indices, IndicesAntisymmetric, IndicesSpinOrbital, IndicesSpinIntegrated
+from Indices import Indices, IndicesSpinOrbital, IndicesSpinIntegrated
 
 
 def test_indices_init():

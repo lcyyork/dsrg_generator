@@ -6,6 +6,23 @@ from Index import Index
 
 
 class Indices:
+    # available keys: antisymmetric, spin-orbital, spin-integrated
+    subclasses = dict()
+
+    @classmethod
+    def register_subclass(cls, indices_type):
+        def decorator(subclass):
+            cls.subclasses[indices_type] = subclass
+            return subclass
+        return decorator
+
+    @classmethod
+    def make_indices(cls, indices_type, params):
+        if indices_type not in cls.subclasses:
+            print(f"Warning: {indices_type} not valid. Use Indices base class.")
+            return Indices(params)
+        return cls.subclasses[indices_type](params)
+
     def __init__(self, list_of_indices):
         """
         The IndicesBase class to handle a list of Index.
@@ -151,6 +168,7 @@ class Indices:
         return sum([counter[i] for i in list_of_space])
 
 
+@Indices.register_subclass('antisymmetric')
 class IndicesAntisymmetric(Indices):
     def __init__(self, list_of_indices):
         """
@@ -237,6 +255,7 @@ class IndicesAntisymmetric(Indices):
         return len(list(multiset_permutations([index.space for index in self.indices])))
 
 
+@Indices.register_subclass('spin-orbital')
 class IndicesSpinOrbital(IndicesAntisymmetric):
     def __init__(self, list_of_indices):
         """
@@ -295,6 +314,7 @@ class IndicesSpinOrbital(IndicesAntisymmetric):
             yield IndicesSpinIntegrated(indices)
 
 
+@Indices.register_subclass('spin-integrated')
 class IndicesSpinIntegrated(IndicesAntisymmetric):
     def __init__(self, list_of_indices):
         """

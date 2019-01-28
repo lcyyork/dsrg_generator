@@ -15,16 +15,28 @@ class Index:
         s = name[0]
         n = name[1:]
         if s not in space_priority:
-            print("{0} is not in the available MO spaces (g, p, v, h, c, a).".format(name))
+            print(f"{name} is not in the available MO spaces (g, p, v, h, c, a).")
             raise ValueError("Improper Index name.")
         if not n.isdigit():
-            print("{0} does not have an integer after the space label.".format(name))
+            print(f"{name} does not have an integer after the space label.")
             raise ValueError("Improper Index name.")
 
-        self.name = name
-        self.space = s
-        self.number = int(n)
+        self._name = name
+        self._space = s
+        self._number = int(n)
         return
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def space(self):
+        return self._space
+
+    @property
+    def number(self):
+        return self._number
 
     def __repr__(self):
         return self.name
@@ -57,7 +69,7 @@ class Index:
         return hash(self.name)
 
     def latex(self, dollar=False):
-        out = "{0}_{{{1}}}".format(self.space, self.number)
+        out = f"{self.space}_{{{self.number}}}"
         if dollar:
             out = "$" + out + "$"
         return out

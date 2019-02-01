@@ -6,7 +6,7 @@ from Index import Index
 
 
 class Indices:
-    # available keys: antisymmetric, spin-orbital, spin-integrated
+    # available keys: antisymmetric, spin-orbital, spin-integrated, spin-adapted
     subclasses = dict()
 
     @classmethod
@@ -34,7 +34,7 @@ class Indices:
             raise TypeError("Indices only accepts sequence type.")
 
         if isinstance(list_of_indices, str):
-            list_of_indices = [i.strip() for i in list_of_indices.split(',')]
+            list_of_indices = [] if len(list_of_indices) == 0 else [i.strip() for i in list_of_indices.split(',')]
 
         # check if list_of_indices contains any non Index type entries
         indices = []
@@ -166,6 +166,16 @@ class Indices:
 
         counter = collections.Counter([i.space for i in self.indices])
         return sum([counter[i] for i in list_of_space])
+
+
+@Indices.register_subclass('spin-adapted')
+class IndicesSpinAdapted(Indices):
+    def __init__(self, list_of_indices):
+        """
+        The spin-adapted indices (cannot change ordering).
+        :param list_of_indices: list of indices
+        """
+        Indices.__init__(self, list_of_indices)
 
 
 @Indices.register_subclass('antisymmetric')

@@ -1,11 +1,58 @@
 import collections
+import copy
 from itertools import product
 from sympy.utilities.iterables import multiset_permutations
 from mo_space import space_priority
 from Index import Index
 
 
-class Indices:
+def sort_and_count_inversions(array):
+    """ Sort an array and count the number of inversions via merge sort. """
+    n = len(array)
+    if n <= 1:
+        return array, 0
+    else:
+        nhalf = n // 2
+
+        left, x = sort_and_count_inversions(array[:nhalf])
+        right, y = sort_and_count_inversions(array[nhalf:])
+        result, z = merge_and_count_split_inversion(left, right)
+
+        return result, x + y + z
+
+
+def merge_and_count_split_inversion(left, right):
+    """ Merge two lists (left, right) into sorted_result and count inversions. """
+    i, j = 0, 0
+    count = 0
+    nleft = len(left)
+    nright = len(right)
+    n = nleft + nright
+    sorted_result = [0] * n
+
+    for k in range(n):
+        if i == nleft:
+            sorted_result[k] = right[j]
+            j += 1
+            continue
+
+        if j == nright:
+            sorted_result[k] = left[i]
+            i += 1
+            continue
+
+        if left[i] <= right[j]:
+            sorted_result[k] = left[i]
+            i += 1
+        else:
+            sorted_result[k] = right[j]
+            count += nleft - i
+            j += 1
+
+    return sorted_result, count
+
+
+class Indices():
     # available keys: antisymmetric, spin-orbital, spin-integrated, spin-adapted
     subclasses = dict()
 
@@ -19,8 +66,7 @@ class Indices:
     @classmethod
     def make_indices(cls, indices_type, params):
         if indices_type not in cls.subclasses:
-            print(f"Warning: {indices_type} not valid. Use Indices base class.")
-            return Indices(params)
+            raise KeyError(f"Invalid indices_type. Try antisymmetric, spin-orbital, spin-integrated, spin-adapted.")
         return cls.subclasses[indices_type](params)
 
     def __init__(self, list_of_indices):
@@ -58,6 +104,9 @@ class Indices:
         self._indices = indices
         self._size = size
         self._set = indices_set
+
+        self._spin_count = [None, None]  # the number of alpha and beta indices
+        self._spin_pure = None
 
     @property
     def indices(self):
@@ -124,7 +173,7 @@ class Indices:
 
     def __add__(self, other):
         indices_list = self.indices + other.indices
-        return Indices(indices_list)
+        return self.__class__(indices_list)
 
     def __iadd__(self, other):
         if len(self.set.intersection(other.set)) != 0:
@@ -135,16 +184,42 @@ class Indices:
         return self
 
     def clone(self):
-        return Indices(self.indices)
+        return self.__class__(self.indices)
 
     def remove(self, idx):
         """ Return a Indices object without the idx-th element of this Indices object. """
         temp = self.indices[:idx] + self.indices[idx + 1:]
-        return Indices(temp)
+        return self.__class__(temp)
 
     def is_permutation(self, other):
         """ Return True if there exists a permutation to bring self to other. """
         return self.set == other.set
+
+    def count_permutations(self, other):
+        """ Count the number of permutations needed from self to other. """
+
+        # check if list1 is a permutation of list2
+        if not self.is_permutation(other):
+            print("list1: ", str(self))
+            print("list2: ", str(other))
+            raise ValueError("Two Indices are not in permutations.")
+
+        sequence = {}
+        for i, v in enumerate(self):
+            sequence[v] = i
+        permuted = [0] * other.size
+        for i, v in enumerate(other):
+            permuted[i] = sequence[v]
+        n_inversions = sort_and_count_inversions(permuted)[1]
+
+        return n_inversions
+
+    def n_multiset_permutation(self):
+        """ Return the number of multiset permutations of this Indices object. """
+        return len(list(multiset_permutations([index.space for index in self.indices])))
+
+    def exist_permute_format(self):
+        return False
 
     def latex(self, dollar=False):
         """ Return the latex form (a string) of this Indices object. """
@@ -167,6 +242,51 @@ class Indices:
         counter = collections.Counter([i.space for i in self.indices])
         return sum([counter[i] for i in list_of_space])
 
+    def canonicalize(self):
+        """
+        Bring the indices to canonical form.
+        :return: the sorted indices and a sign change
+        """
+        return self.clone(), 1
+
+    def latex_permute_format(self):
+        """
+        Compute the multiset-permutation form of this Indices object for latex.
+        :return: the number of multiset permutations and a string of permutation for latex
+        """
+        return 1, ""
+
+    def ambit_permute_format(self):
+        """
+        Generate the multiset-permutation form and the corresponding sign of this Indices object for ambit.
+        :yield: sign change, a string of permutation for ambit
+        """
+        yield 1, ",".join(map(str, self.indices))
+
+    @property
+    def spin_count(self):
+        raise AttributeError("Only available for spin-integrated indices.")
+
+    @property
+    def spin_pure(self):
+        raise AttributeError("Only available for spin-integrated indices.")
+
+    def is_spin_pure(self):
+        return self.spin_pure
+
+    def n_alpha(self):
+        return self.spin_count[0]
+
+    def n_beta(self):
+        return self.spin_count[1]
+
+    def generate_spin_cases(self):
+        """
+        Generate spin-integrated indices from spin-orbital indices.
+        :yield: IndicesSpinIntegrated object, e.g., a0,g0 -> a0,g0; a0,G0; A0,g0; A0,G0
+        """
+        raise AttributeError("Only available for spin-orbital indices.")
+
 
 @Indices.register_subclass('spin-adapted')
 class IndicesSpinAdapted(Indices):
@@ -187,82 +307,18 @@ class IndicesAntisymmetric(Indices):
         """
         Indices.__init__(self, list_of_indices)
 
-    @staticmethod
-    def sort_and_count_inversions(A):
-        """ Sort an array A and count the number of inversions via merge sort. """
-        n = len(A)
-        if n <= 1:
-            return A, 0
-        else:
-            nhalf = n // 2
-
-            left, x = IndicesAntisymmetric.sort_and_count_inversions(A[:nhalf])
-            right, y = IndicesAntisymmetric.sort_and_count_inversions(A[nhalf:])
-            result, z = IndicesAntisymmetric.merge_and_count_split_inversion(left, right)
-
-            return result, x + y + z
-
-    @staticmethod
-    def merge_and_count_split_inversion(left, right):
-        """ Merge two lists (left, right) into sorted_result and count inversions. """
-        i, j = 0, 0
-        count = 0
-        nleft = len(left)
-        nright = len(right)
-        n = nleft + nright
-        sorted_result = [0] * n
-
-        for k in range(n):
-            if i == nleft:
-                sorted_result[k] = right[j]
-                j += 1
-                continue
-
-            if j == nright:
-                sorted_result[k] = left[i]
-                i += 1
-                continue
-
-            if left[i] <= right[j]:
-                sorted_result[k] = left[i]
-                i += 1
-            else:
-                sorted_result[k] = right[j]
-                count += nleft - i
-                j += 1
-
-        return sorted_result, count
-
-    def count_permutations(self, other):
-        """ Count the number of permutations needed from self to other. """
-
-        # check if list1 is a permutation of list2
-        if not self.is_permutation(other):
-            print("list1: ", str(self))
-            print("list2: ", str(other))
-            raise ValueError("Two Indices are not permutational.")
-
-        sequence = {}
-        for i, v in enumerate(self):
-            sequence[v] = i
-        permuted = [0] * other.size
-        for i, v in enumerate(other):
-            permuted[i] = sequence[v]
-        n_inversions = self.sort_and_count_inversions(permuted)[1]
-
-        return n_inversions
-
     def canonicalize(self):
         """ Sort this Indices and return the sorted Indices with the proper sign change. """
         if self.size <= 1:
             return self.clone(), 1
 
-        list_index, permutation_count = self.sort_and_count_inversions(self)
-        return Indices(list_index), (-1) ** permutation_count
+        list_index, permutation_count = sort_and_count_inversions(self)
+        return self.__class__(list_index), (-1) ** permutation_count
 
-    def n_multiset_permutation(self):
-        """ Return the number of multiset permutations of this Indices object. """
-        return len(list(multiset_permutations([index.space for index in self.indices])))
+    def exist_permute_format(self):
+        """ Return True if there is a valid multiset permutation. """
+        space = [i.space for i in self.indices]
+        return space.count(space[0]) != self.size
 
     def latex_permute_format(self):
         """
@@ -299,7 +355,7 @@ class IndicesAntisymmetric(Indices):
                 indices.append(index)
                 next_available[space] += 1
                 permuted[i] = original_ordering[index]
-            yield (-1) ** (self.sort_and_count_inversions(permuted)[1]), ",".join(map(str, indices))
+            yield (-1) ** (sort_and_count_inversions(permuted)[1]), ",".join(map(str, indices))
 
 
 @Indices.register_subclass('spin-orbital')
@@ -345,6 +401,13 @@ class IndicesSpinIntegrated(IndicesAntisymmetric):
     def spin_pure(self):
         return self._spin_pure
 
+    def exist_permute_format(self):
+        """ Return True if there is a valid multiset permutation. """
+        if not self.spin_pure:
+            return False
+        else:
+            return super().exist_permute_format()
+
     def latex_permute_format(self):
         """
         Compute the multiset-permutation form of this Indices object for latex.
@@ -364,12 +427,3 @@ class IndicesSpinIntegrated(IndicesAntisymmetric):
             yield 1, ",".join(map(str, self.indices))
         else:
             super().ambit_permute_format()
-
-    def is_spin_pure(self):
-        return self.spin_pure
-
-    def n_alpha(self):
-        return self.spin_count[0]
-
-    def n_beta(self):
-        return self.spin_count[1]

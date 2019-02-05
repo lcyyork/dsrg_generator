@@ -127,3 +127,12 @@ def test_indices_si_alpha_beta():
     assert a.n_beta() == 4 and a.n_alpha() == 0
     a = IndicesSpinIntegrated(["P0", "P1", "v2", "A3", "h2"])
     assert a.n_beta() == 3 and a.n_alpha() == 2
+
+
+def test_indices_si_exist_permute_format():
+    a = IndicesSpinIntegrated(["P0", "P1", "V2", "A3"])
+    assert a.exist_permute_format()
+    a = IndicesSpinIntegrated(["p0", "P1", "V2", "A3"])
+    assert not a.exist_permute_format()
+    a = IndicesSpinIntegrated(["p0", "p1", "p2"])
+    assert not a.exist_permute_format()

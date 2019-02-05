@@ -1,5 +1,4 @@
-import copy
-from Indices import Indices, IndicesAntisymmetric, IndicesSpinOrbital, IndicesSpinIntegrated, IndicesSpinAdapted
+from Indices import init_indices
 from sympy.utilities.iterables import multiset_permutations
 
 
@@ -11,29 +10,12 @@ class SecondQuantizedOperator:
         :param lower_indices: a list of Index or string for annihilation operators
         :param indices_type: the type of indices, check Indices subclasses
         """
-        def init_indices(indices, indices_type):
-            try:
-                return Indices.make_indices(indices_type, indices)
-            except TypeError:
-                if issubclass(Indices, type(indices))
-                    return copy.deepcopy(indices)
-                else:
-                    raise ValueError("Unable to initialize indices to Indices.")
 
         self._cre_ops = init_indices(upper_indices, indices_type)
         self._ann_ops = init_indices(lower_indices, indices_type)
-        if isinstance(upper_indices, IndicesAntisymmetric):
-            self._cre_ops = upper_indices
-        else:
-            self._cre_ops = IndicesAntisymmetric(upper_indices)
-
-        if isinstance(lower_indices, IndicesAntisymmetric):
-            self._ann_ops = lower_indices
-        else:
-            self._ann_ops = IndicesAntisymmetric(lower_indices)
-
         self._n_ann = self._ann_ops.size
         self._n_cre = self._cre_ops.size
+        self._indices_type = indices_type
 
     @property
     def cre_ops(self):
@@ -50,6 +32,10 @@ class SecondQuantizedOperator:
     @property
     def n_cre(self):
         return self._n_cre
+
+    @property
+    def indices_type(self):
+        return self._indices_type
 
     def __ne__(self, other):
         return not self == other
@@ -94,6 +80,20 @@ class SecondQuantizedOperator:
             out = "$ " + out + " $"
         return out
 
+    def exist_permute_format(self):
+        """ Return True if there exists a multiset permutation of this object. """
+        cre_space = [i.space for i in self.cre_ops.indices]
+        cre_exist = cre_space.count(cre_space[0]) != self.cre_ops.size
+        if cre_exist:
+            return True
+        else:
+            ann_space = [i.space for i in self.ann_ops.indices]
+            return ann_space.count(ann_space[0]) != self.ann_ops.size
+
+    def n_multiset_permutation(self):
+        """ Return the number of multiset permutations. """
+        return self.cre_ops.n_multiset_permutation() * self.ann_ops.n_multiset_permutation()
+
     def latex_permute_format(self):
         """
         Compute the multiset-permutation form of the SQOperator object.
@@ -118,21 +118,6 @@ class SecondQuantizedOperator:
             for sign_cre, str_cre in self.cre_ops.ambit_permute_format():
                 for sign_ann, str_ann in self.ann_ops.ambit_permute_format():
                     yield sign_ann * sign_cre, str_ann + ',' + str_cre
-
-    def n_multiset_permutation(self):
-        """ Return the number of multiset permutations. """
-        return self.cre_ops.n_multiset_permutation() * self.ann_ops.n_multiset_permutation()
-
-    def exist_permute_format(self):
-        """ Return True if there exists a multiset permutation of this SQOperator object. """
-        cre_space = [i.space for i in self.cre_ops.indices]
-        cre_exist = cre_space.count(cre_space[0]) != self.cre_ops.size
-        if cre_exist:
-            return True
-        else:
-            ann_space = [i.space for i in self.ann_ops.indices]
-            return ann_space.count(ann_space[0]) != self.ann_ops.size
-
 
 
 

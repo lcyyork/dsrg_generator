@@ -1,5 +1,4 @@
 import collections
-import copy
 from itertools import product
 from sympy.utilities.iterables import multiset_permutations
 from mo_space import space_priority
@@ -52,7 +51,7 @@ def merge_and_count_split_inversion(left, right):
     return sorted_result, count
 
 
-class Indices():
+class Indices:
     # available keys: antisymmetric, spin-orbital, spin-integrated, spin-adapted
     subclasses = dict()
 
@@ -66,7 +65,7 @@ class Indices():
     @classmethod
     def make_indices(cls, indices_type, params):
         if indices_type not in cls.subclasses:
-            raise KeyError(f"Invalid indices_type. Try antisymmetric, spin-orbital, spin-integrated, spin-adapted.")
+            raise KeyError(f"Invalid indices type '{indices_type}'. Available: {', '.join(Indices.subclasses.keys())}.")
         return cls.subclasses[indices_type](params)
 
     def __init__(self, list_of_indices):
@@ -123,29 +122,38 @@ class Indices():
     def __repr__(self):
         return ", ".join(map(str, self.indices))
 
+    def _is_valid_operand(self, other):
+        if not isinstance(other, self.__class__):
+            raise TypeError(f"Cannot compare between '{type(self).__name__}' and '{type(other).__name__}'.")
+
+    @staticmethod
+    def _is_valid_operand_weak(other):
+        if not issubclass(type(other), Indices):
+            raise TypeError(f"'{type(other).__name__}' is not a subclass of Indices.")
+
     def __eq__(self, other):
-        return self.indices == other.indices
+        self._is_valid_operand(other)
+        return (self.size, self.indices) == (other.size, other.indices)
 
     def __ne__(self, other):
-        return not self == other
+        self._is_valid_operand(other)
+        return (self.size, self.indices) != (other.size, other.indices)
 
     def __lt__(self, other):
-        if self.size != other.size:
-            return True if self.size < other.size else False
-
-        for i, j in zip(self.indices, other.indices):
-            if i != j:
-                return True if i < j else False
-        return False
+        self._is_valid_operand(other)
+        return (self.size, self.indices) < (other.size, other.indices)
 
     def __le__(self, other):
-        return self < other or self == other
+        self._is_valid_operand(other)
+        return (self.size, self.indices) <= (other.size, other.indices)
 
     def __gt__(self, other):
-        return not self <= other
+        self._is_valid_operand(other)
+        return (self.size, self.indices) > (other.size, other.indices)
 
     def __ge__(self, other):
-        return not self < other
+        self._is_valid_operand(other)
+        return (self.size, self.indices) >= (other.size, other.indices)
 
     def __iter__(self):
         self.n = 0
@@ -172,10 +180,12 @@ class Indices():
         return value in self.set
 
     def __add__(self, other):
+        self._is_valid_operand_weak(other)
         indices_list = self.indices + other.indices
         return self.__class__(indices_list)
 
     def __iadd__(self, other):
+        self._is_valid_operand_weak(other)
         if len(self.set.intersection(other.set)) != 0:
             raise ValueError("Two Indices objects contain common Index, thus cannot be added.")
         self._indices += other.indices
@@ -193,6 +203,7 @@ class Indices():
 
     def is_permutation(self, other):
         """ Return True if there exists a permutation to bring self to other. """
+        self._is_valid_operand_weak(other)
         return self.set == other.set
 
     def count_permutations(self, other):
@@ -213,13 +224,6 @@ class Indices():
         n_inversions = sort_and_count_inversions(permuted)[1]
 
         return n_inversions
-
-    def n_multiset_permutation(self):
-        """ Return the number of multiset permutations of this Indices object. """
-        return len(list(multiset_permutations([index.space for index in self.indices])))
-
-    def exist_permute_format(self):
-        return False
 
     def latex(self, dollar=False):
         """ Return the latex form (a string) of this Indices object. """
@@ -249,6 +253,16 @@ class Indices():
         """
         return self.clone(), 1
 
+    def n_multiset_permutation(self):
+        """ Return the number of multiset permutations of this Indices object. """
+        if not self.exist_permute_format():
+            return 1
+        return len(list(multiset_permutations([index.space for index in self.indices])))
+
+    def exist_permute_format(self):
+        """ Return True if there is a valid multiset permutation. """
+        return False
+
     def latex_permute_format(self):
         """
         Compute the multiset-permutation form of this Indices object for latex.
@@ -259,17 +273,17 @@ class Indices():
     def ambit_permute_format(self):
         """
         Generate the multiset-permutation form and the corresponding sign of this Indices object for ambit.
-        :yield: sign change, a string of permutation for ambit
+        :return: sign change, a string of permutation for ambit
         """
         yield 1, ",".join(map(str, self.indices))
 
     @property
     def spin_count(self):
-        raise AttributeError("Only available for spin-integrated indices.")
+        raise TypeError("Only available for spin-integrated indices.")
 
     @property
     def spin_pure(self):
-        raise AttributeError("Only available for spin-integrated indices.")
+        raise TypeError("Only available for spin-integrated indices.")
 
     def is_spin_pure(self):
         return self.spin_pure
@@ -283,9 +297,9 @@ class Indices():
     def generate_spin_cases(self):
         """
         Generate spin-integrated indices from spin-orbital indices.
-        :yield: IndicesSpinIntegrated object, e.g., a0,g0 -> a0,g0; a0,G0; A0,g0; A0,G0
+        :return: IndicesSpinIntegrated object, e.g., a0,g0 -> a0,g0; a0,G0; A0,g0; A0,G0
         """
-        raise AttributeError("Only available for spin-orbital indices.")
+        raise TypeError("Only available for spin-orbital indices.")
 
 
 @Indices.register_subclass('spin-adapted')
@@ -340,7 +354,7 @@ class IndicesAntisymmetric(Indices):
     def ambit_permute_format(self):
         """
         Generate the multiset-permutation form and the corresponding sign of this Indices object for ambit.
-        :yield: sign change, a string of permutation for ambit
+        :return: sign change, a string of permutation for ambit
         """
         space_map = collections.defaultdict(list)
         for index in self.indices:
@@ -373,7 +387,7 @@ class IndicesSpinOrbital(IndicesAntisymmetric):
     def generate_spin_cases(self):
         """
         Generate spin-integrated indices from spin-orbital indices.
-        :yield: IndicesSpinIntegrated object, e.g., a0,g0 -> a0,g0; a0,G0; A0,g0; A0,G0
+        :return: IndicesSpinIntegrated object, e.g., a0,g0 -> a0,g0; a0,G0; A0,g0; A0,G0
         """
         for spins in product(range(2), repeat=self.size):
             indices = list(map(lambda i, s: i if not s else i.to_beta(), self.indices, spins))
@@ -421,7 +435,7 @@ class IndicesSpinIntegrated(IndicesAntisymmetric):
     def ambit_permute_format(self):
         """
         Generate the multiset-permutation form and the corresponding sign of this Indices object for ambit.
-        :yield: sign change, a string of permutation for ambit
+        :return: sign change, a string of permutation for ambit
         """
         if not self.spin_pure:
             yield 1, ",".join(map(str, self.indices))

@@ -75,7 +75,9 @@ def test_indices_so_canonical():
     a = Indices.make_indices('spin-orbital', "p0, p1, a0, h0, g4, g1, c1, v2")
     c, sign = a.canonicalize()
     assert sign == -1
-    assert c == Indices("g1, g4, p0, p1, h0, v2, c1, a0")
+    assert c == IndicesSpinOrbital("g1, g4, p0, p1, h0, v2, c1, a0")
+    with pytest.raises(TypeError):
+        assert c == Indices("g1, g4, p0, p1, h0, v2, c1, a0")
 
 
 def test_indices_so_ambit_perm():
@@ -103,7 +105,7 @@ def test_indices_si_canonical():
     a = IndicesSpinIntegrated("p0, p1, a0, h0, G4, g1, C1, v2")
     c, sign = a.canonicalize()
     assert sign == -1
-    assert c == Indices("g1, p0, p1, h0, v2, a0, G4, C1")
+    assert c == IndicesSpinIntegrated("g1, p0, p1, h0, v2, a0, G4, C1")
 
 
 def test_indices_si_ambit_perm():

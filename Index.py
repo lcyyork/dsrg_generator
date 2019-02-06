@@ -41,29 +41,34 @@ class Index:
     def __repr__(self):
         return self.name
 
+    @staticmethod
+    def _is_valid_operand(other):
+        if not isinstance(other, Index):
+            raise TypeError(f"Cannot compare between 'Index' and '{type(other).__name__}'.")
+
     def __eq__(self, other):
-        return self.name == other.name
+        self._is_valid_operand(other)
+        return (self.space, self.number) == (other.space, other.number)
 
     def __ne__(self, other):
-        return not self == other
+        self._is_valid_operand(other)
+        return (self.space, self.number) != (other.space, other.number)
 
     def __lt__(self, other):
-        if self.space != other.space:
-            return space_priority[self.space] < space_priority[other.space]
-        else:
-            return self.number < other.number
+        self._is_valid_operand(other)
+        return (space_priority[self.space], self.number) < (space_priority[other.space], other.number)
 
     def __le__(self, other):
-        if self.space != other.space:
-            return space_priority[self.space] < space_priority[other.space]
-        else:
-            return self.number <= other.number
+        self._is_valid_operand(other)
+        return (space_priority[self.space], self.number) <= (space_priority[other.space], other.number)
 
     def __gt__(self, other):
-        return not self <= other
+        self._is_valid_operand(other)
+        return (space_priority[self.space], self.number) > (space_priority[other.space], other.number)
 
     def __ge__(self, other):
-        return not self < other
+        self._is_valid_operand(other)
+        return (space_priority[self.space], self.number) >= (space_priority[other.space], other.number)
 
     def __hash__(self):
         return hash(self.name)

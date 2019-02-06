@@ -30,14 +30,30 @@ def test_indices_eq():
     assert Indices("g0, c1, V3") == Indices(["g0", 'c1', "V3"])
 
 
+def test_indices_ne():
+    assert not Indices("g0, c1, V3") != Indices(["g0", 'c1', "V3"])
+
+
 def test_indices_lt():
     assert Indices("A3") < Indices("g0, v2")
     assert Indices("g0, c1, V3") < Indices("c1, V3, g0")
 
 
+def test_indices_le():
+    assert Indices("A3") <= Indices("g0, v2")
+    assert Indices("g0, c1, V3") <= Indices("c1, V3, g0")
+    assert Indices("g0, c1, V3") <= Indices("g0, c1, V3")
+
+
 def test_indices_gt():
     assert Indices("g0, C2, H8") > Indices("v2")
     assert Indices("g0, C2, h8") > Indices("g0, c2, h8")
+
+
+def test_indices_ge():
+    assert Indices("g0, C2, H8") >= Indices("v2")
+    assert Indices("g0, C2, h8") >= Indices("g0, c2, h8")
+    assert Indices("g0, c1, V3") >= Indices("g0, c1, V3")
 
 
 def test_indices_get():
@@ -68,11 +84,11 @@ def test_indices_remove():
 
 def test_indices_so_init():
     with pytest.raises(ValueError):
-        Indices.make_indices('spin-orbital', "p0, V2, A2")
+        Indices.make_indices("p0, V2, A2", 'spin-orbital')
 
 
 def test_indices_so_canonical():
-    a = Indices.make_indices('spin-orbital', "p0, p1, a0, h0, g4, g1, c1, v2")
+    a = Indices.make_indices("p0, p1, a0, h0, g4, g1, c1, v2", 'spin-orbital')
     c, sign = a.canonicalize()
     assert sign == -1
     assert c == IndicesSpinOrbital("g1, g4, p0, p1, h0, v2, c1, a0")

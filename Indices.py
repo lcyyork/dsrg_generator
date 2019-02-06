@@ -63,7 +63,7 @@ class Indices:
         return decorator
 
     @classmethod
-    def make_indices(cls, indices_type, params):
+    def make_indices(cls, params, indices_type):
         if indices_type not in cls.subclasses:
             raise KeyError(f"Invalid indices type '{indices_type}'. Available: {', '.join(Indices.subclasses.keys())}.")
         return cls.subclasses[indices_type](params)
@@ -124,12 +124,12 @@ class Indices:
 
     def _is_valid_operand(self, other):
         if not isinstance(other, self.__class__):
-            raise TypeError(f"Cannot compare between '{type(self).__name__}' and '{type(other).__name__}'.")
+            raise TypeError(f"Cannot compare between '{self.__class__.__name__}' and '{other.__class__.__name__}'.")
 
     @staticmethod
     def _is_valid_operand_weak(other):
-        if not issubclass(type(other), Indices):
-            raise TypeError(f"'{type(other).__name__}' is not a subclass of Indices.")
+        if not isinstance(other, Indices):
+            raise TypeError(f"'{other.__class__.__name__}' is not a subclass of 'Indices'.")
 
     def __eq__(self, other):
         self._is_valid_operand(other)
@@ -322,7 +322,10 @@ class IndicesAntisymmetric(Indices):
         Indices.__init__(self, list_of_indices)
 
     def canonicalize(self):
-        """ Sort this Indices and return the sorted Indices with the proper sign change. """
+        """
+        Sort the Indices to canonical form.
+        :return: a tuple of (sorted Indices, sign change)
+        """
         if self.size <= 1:
             return self.clone(), 1
 

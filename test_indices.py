@@ -126,8 +126,23 @@ def test_indices_si_canonical():
 
 def test_indices_si_ambit_perm():
     a = IndicesSpinIntegrated(["P0", "P1", "V2", "A3"])
+    ref = {"P0,P1,V2,A3",
+           "P0,P1,A3,V2",
+           "P0,A3,P1,V2",
+           "A3,P0,P1,V2",
+           "P0,V2,P1,A3",
+           "V2,P0,P1,A3",
+           "P0,A3,V2,P1",
+           "P0,V2,A3,P1",
+           "V2,P0,A3,P1",
+           "A3,P0,V2,P1",
+           "A3,V2,P0,P1",
+           "V2,A3,P0,P1"}
     for sign, indices_str in a.ambit_permute_format():
         assert sign == (-1) ** a.count_permutations(Indices(indices_str))
+        assert indices_str in ref
+        ref.remove(indices_str)
+    assert len(ref) == 0
 
     a = IndicesSpinIntegrated(["P0", "P1", "c2", "A3"])
     for sign, indices_str in a.ambit_permute_format():

@@ -433,7 +433,7 @@ class IndicesSpinIntegrated(IndicesAntisymmetric):
         if not self.spin_pure:
             return 1, ""
         else:
-            super().latex_permute_format()
+            return super().latex_permute_format()
 
     def ambit_permute_format(self):
         """
@@ -443,4 +443,4 @@ class IndicesSpinIntegrated(IndicesAntisymmetric):
         if not self.spin_pure:
             yield 1, ",".join(map(str, self.indices))
         else:
-            super().ambit_permute_format()
+            yield from super().ambit_permute_format()

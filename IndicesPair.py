@@ -2,7 +2,7 @@ from typing import Type
 from Indices import Indices, IndicesSpinOrbital, IndicesSpinIntegrated
 
 
-def init_indices_pair(upper_indices, lower_indices, indices_type: str):
+def make_indices_pair(upper_indices, lower_indices, indices_type: str):
         """
         Initialize a IndicesPair object from upper and lower indices.
         :param upper_indices: a list of Index or string for upper indices
@@ -34,8 +34,8 @@ class IndicesPair:
             raise TypeError(f"Inconsistent type for upper_indices ('{upper_indices.__class__.__name__}') "
                             f"and lower_indices ('{lower_indices.__class__.__name__}').")
 
-        self._upper_indices = upper_indices.clone()
-        self._lower_indices = lower_indices.clone()
+        self._upper_indices = upper_indices
+        self._lower_indices = lower_indices
         self._n_upper = self._upper_indices.size
         self._n_lower = self._lower_indices.size
 

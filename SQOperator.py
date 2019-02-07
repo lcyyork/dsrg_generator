@@ -107,10 +107,10 @@ class SecondQuantizedOperator:
         """
         if self.is_empty():
             return 1, '', ''
-        nperm_cre, perm_cre = self.cre_ops.latex_permute_format()
-        nperm_ann, perm_ann = self.ann_ops.latex_permute_format()
+        n_perm_cre, perm_cre = self.cre_ops.latex_permute_format()
+        n_perm_ann, perm_ann = self.ann_ops.latex_permute_format()
         whitespace = ' ' if perm_cre and perm_ann else ''
-        return nperm_cre * nperm_ann, perm_cre + whitespace + perm_ann, self.latex()
+        return n_perm_cre * n_perm_ann, perm_cre + whitespace + perm_ann, self.latex()
 
     def ambit_permute_format(self, reverse_cre_ann=False):
         """

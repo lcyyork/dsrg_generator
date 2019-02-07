@@ -58,7 +58,7 @@ def test_indices_ge():
 
 def test_indices_get():
     with pytest.raises(IndexError):
-        a = Indices([])[0]
+        assert Indices([])[0]
     assert Indices("p0, p1, a0, h0, g4, g1, c1, v2")[2] == Index("a0")
 
 
@@ -103,8 +103,8 @@ def test_indices_so_ambit_perm():
 
 
 def test_indices_so_latex_perm():
-    nperm, perm = IndicesSpinOrbital("p0, p1, g2, a4").latex_permute_format()
-    assert nperm == 12
+    n_perm, perm = IndicesSpinOrbital("p0, p1, g2, a4").latex_permute_format()
+    assert n_perm == 12
     assert perm == "{\\cal P}(g_{2} / p_{0} p_{1} / a_{4})"
 
 

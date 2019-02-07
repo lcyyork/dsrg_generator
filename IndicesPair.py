@@ -1,5 +1,5 @@
 from typing import Type
-from Indices import Indices, IndicesSpinOrbital, IndicesSpinIntegrated
+from Indices import Indices, IndicesSpinOrbital
 
 
 def make_indices_pair(upper_indices, lower_indices, indices_type: str):

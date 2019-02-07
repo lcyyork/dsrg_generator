@@ -123,7 +123,7 @@ class Indices:
         return ", ".join(map(str, self.indices))
 
     def _is_valid_operand(self, other):
-        if not isinstance(other, self.__class__):
+        if self.__class__ is not other.__class__:
             raise TypeError(f"Cannot compare between '{self.__class__.__name__}' and '{other.__class__.__name__}'.")
 
     @staticmethod

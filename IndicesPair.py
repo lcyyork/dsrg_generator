@@ -56,8 +56,11 @@ class IndicesPair:
         return self._n_lower
 
     @property
+    def size(self):
+        return self._n_upper + self._n_lower
+
     def is_empty(self):
-        return (self._n_upper + self._n_lower) == 0
+        return self.size == 0
 
     @staticmethod
     def _is_valid_operand(other):

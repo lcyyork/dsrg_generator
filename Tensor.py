@@ -1,109 +1,126 @@
-from Indices import Indices
+from IndicesPair import IndicesPair
 
 
 class Tensor:
-    """ The antisymmetric many-body Tensor class.
-    capability: a single tensor term with lower and upper indices """
-
-    def __init__(self, name, upper_indices, lower_indices, priority=0):
+    def __init__(self, name, indices_pair, priority=0):
         """
-        The antisymmetric many-body Tensor class.
-        :param name: tensor name
-        :param upper_indices: upper indices of the tensor, a list of string/Index
-        :param lower_indices: lower indices of the tensor, a list of string/Index
-        :param priority: tensor priority, smaller value has higher priority
+        The tensor class.
+        :param name: the tensor name
+        :param indices_pair: a IndicesPair object for the upper and lower indices
+        :param priority: a integer for priority when sorting
         """
         if not isinstance(name, str):
-            raise ValueError("Tensor name has to be string type.")
-        self.name = name
+            raise TypeError(f"Invalid tensor::name, given '{name.__class__.__name__}', required 'string'.")
+        self._name = name
 
-        self.nbody = len(upper_indices)
-        if self.nbody != len(lower_indices):
-            raise ValueError("Cannot decide Tensor nbody. Upper and lower indices are of different sizes.")
+        if not isinstance(indices_pair, IndicesPair):
+            t = f"{indices_pair.__class__.__name__}"
+            raise TypeError(f"Invalid tensor::indices_pair, given '{t}', required 'IndicesPair'.")
+        self._indices_pair = indices_pair
 
-        if isinstance(upper_indices, Indices):
-            self.Uindices = upper_indices
-        else:
-            self.Uindices = Indices(upper_indices)
+        if not isinstance(property, int):
+            raise TypeError(f"Invalid tensor::priority, given '{priority.__class__.__name__}', required 'int'.")
+        self._priority = priority
 
-        if isinstance(lower_indices, Indices):
-            self.Lindices = lower_indices
-        else:
-            self.Lindices = Indices(lower_indices)
+    @property
+    def name(self):
+        return self._name
 
-        self.priority = priority
+    @property
+    def indices_pair(self):
+        return self._indices_pair
 
-        return
+    @property
+    def priority(self):
+        return self._priority
+
+    @property
+    def upper_indices(self):
+        return self.indices_pair.upper_indices
+
+    @property
+    def lower_indices(self):
+        return self.indices_pair.lower_indices
+
+    @property
+    def n_upper(self):
+        return self.indices_pair.n_upper
+
+    @property
+    def n_lower(self):
+        return self.indices_pair.n_lower
+
+    @property
+    def size(self):
+        return self.indices_pair.size
+
+    @property
+    def comparison_tuple(self):
+        return self.priority, self.name, self.size, self.indices_pair
+
+    @staticmethod
+    def _is_valid_operand(other):
+        if not isinstance(other, Tensor):
+            raise TypeError(f"Cannot compare between 'Tensor' and '{other.__class__.__name__}'.")
 
     def __eq__(self, other):
-        if self.priority != other.priority:
-            return False
-        if self.nbody != other.nbody:
-            return False
-        if self.name != other.name:
-            return False
-        if self.Uindices != other.Uindices:
-            return False
-        if self.Lindices != other.Lindices:
-            return False
-        return True
+        self._is_valid_operand(other)
+        return self.comparison_tuple == other.comparison_tuple
 
     def __ne__(self, other):
-        return not self == other
-
-    def is_permutation(self, other):
-        """ Return True if two tensors differ in permutations. """
-        if self.priority != other.priority:
-            return False
-        if self.nbody != other.nbody:
-            return False
-        if self.name != other.name:
-            return False
-        return self.Uindices.is_permutation(other.Uindices) and self.Lindices.is_permutation(other.Lindices)
+        self._is_valid_operand(other)
+        return self.comparison_tuple != other.comparison_tuple
 
     def __lt__(self, other):
-        if self.priority != other.priority:
-            return True if self.priority < other.priority else False
-        if self.nbody != other.nbody:
-            return True if self.nbody < other.nbody else False
-        if self.name != other.name:
-            return True if self.name < other.name else False
-        if self.Uindices != other.Uindices:
-            return True if self.Uindices < other.Uindices else False
-        if self.Lindices != other.Lindices:
-            return True if self.Lindices < other.Lindices else False
-        return False
+        self._is_valid_operand(other)
+        return self.comparison_tuple < other.comparison_tuple
 
     def __le__(self, other):
-        return self < other or self == other
+        self._is_valid_operand(other)
+        return self.comparison_tuple <= other.comparison_tuple
 
     def __gt__(self, other):
-        return not self <= other
+        self._is_valid_operand(other)
+        return self.comparison_tuple > other.comparison_tuple
 
     def __ge__(self, other):
-        return not self < other
+        self._is_valid_operand(other)
+        return self.comparison_tuple >= other.comparison_tuple
 
     def __repr__(self):
         return self.latex()
 
     def latex(self, dollar=False):
-        out = "{}^{}_{}".format(self.name, self.Uindices.latex(), self.Lindices.latex())
+        out = f"{self.name}{self.indices_pair.latex()}"
         if dollar:
             out = "$ " + out + " $"
         return out
 
     def ambit(self):
-        return '{}{}["{},{}"]'.format(self.name, self.nbody, self.Uindices.ambit(), self.Lindices.ambit())
+        if self.n_lower == self.n_upper:
+            return f"{self.name}{self.n_lower}{self.indices_pair.ambit()}"
+        return f"{self.name}{self.size}{self.indices_pair.ambit()}"
 
-    def canonicalize_inplace(self):
-        self.Uindices, sign0 = self.Uindices.canonicalize()
-        self.Lindices, sign1 = self.Lindices.canonicalize()
-        return sign0 * sign1
+    def is_permutation(self, other):
+        """
+        Test if two tensors only differ by permutations of indices.
+        :param other: the compared Tensor object
+        :return: True if two tensors only differ by permutations of indices
+        """
+        self._is_valid_operand(other)
+        if self.comparison_tuple[:-1] != other.comparison_tuple[:-1]:
+            return False
+        else:
+            return self.upper_indices.is_permutation(other.upper_indices) and \
+                   self.lower_indices.is_permutation(other.lower_indices)
 
-    def canonicalize_copy(self):
-        Uindices, sign0 = self.Uindices.canonicalize()
-        Lindices, sign1 = self.Lindices.canonicalize()
-        return Tensor(self.name, Uindices, Lindices, self.priority), sign0 * sign1
+    def canonicalize(self):
+        """
+        Sort the Tensor indices to canonical order.
+        :return: a tuple of (tensor with sorted indices, sign)
+        """
+        indices_pair, sign = self.indices_pair.canonicalize()
+        return self.__class__(self.name, indices_pair, self.priority), sign
 
 
 class Cumulant(Tensor):

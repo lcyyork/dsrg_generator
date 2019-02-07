@@ -37,11 +37,15 @@ class SecondQuantizedOperator:
 
     @property
     def n_cre(self):
-        return self.cre_ops.size
+        return self.indices_pair.n_upper
 
     @property
     def n_ann(self):
-        return self.ann_ops.size
+        return self.indices_pair.n_lower
+
+    @property
+    def n_ops(self):
+        return self.n_cre + self.n_ann
 
     @staticmethod
     def _is_valid_operand(other):
@@ -86,11 +90,7 @@ class SecondQuantizedOperator:
 
     def is_empty(self):
         """ Return True is this SQOperator is empty. """
-        return self.n_ops() == 0
-
-    def n_ops(self):
-        """ Return the sum of creation and annihilation operators. """
-        return self.n_cre + self.n_ann
+        return self.n_ops == 0
 
     def exist_permute_format(self):
         """ Return True if there exists a multiset permutation of this object. """

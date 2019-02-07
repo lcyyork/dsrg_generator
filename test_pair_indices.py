@@ -13,7 +13,7 @@ def test_init():
     assert a.lower_indices == Indices.make_indices("p0, G8", 'spin-integrated')
     assert a.n_upper == 2
     assert a.n_lower == 2
-    assert not a.is_empty
+    assert not a.is_empty()
 
 
 def test_eq():

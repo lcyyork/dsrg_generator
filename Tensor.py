@@ -1,7 +1,50 @@
-from IndicesPair import IndicesPair
+from IndicesPair import IndicesPair, make_indices_pair
+
+
+def make_tensor_preset(upper_indices, lower_indices, indices_type, tensor_type):
+    """
+    Create a Tensor subclass object from upper and lower indices.
+    :param upper_indices: a list of Index or string for upper indices
+    :param lower_indices: a list of Index or string for lower indices
+    :param indices_type: the preset type of indices
+    :param tensor_type: the preset type of tensor type
+    :return: a Tensor subclass object
+    """
+    indices_pair = make_indices_pair(upper_indices, lower_indices, indices_type)
+    return Tensor.make_tensor(tensor_type, indices_pair)
+
+
+def make_tensor(name, upper_indices, lower_indices, indices_type, priority=0):
+    """
+    Create a Tensor object from upper and lower indices.
+    :param name: the name of tensor
+    :param upper_indices: a list of Index or string for upper indices
+    :param lower_indices: a list of Index or string for lower indices
+    :param indices_type: the preset type of indices
+    :param priority: the priority of tensor
+    :return: a Tensor object
+    """
+    indices_pair = make_indices_pair(upper_indices, lower_indices, indices_type)
+    return Tensor(name, indices_pair, priority)
 
 
 class Tensor:
+    # available choices: 'cumulant', 'hole_density', 'Kronecker', 'cluster_amplitude', 'Hamiltonian'
+    subclasses = dict()
+
+    @classmethod
+    def register_subclass(cls, tensor_type):
+        def decorator(subclass):
+            cls.subclasses[tensor_type] = subclass
+            return subclass
+        return decorator
+
+    @classmethod
+    def make_tensor(cls, tensor_type, params):
+        if tensor_type not in cls.subclasses:
+            raise KeyError(f"Invalid tensor type '{tensor_type}', not in {', '.join(Tensor.subclasses.keys())}.")
+        return cls.subclasses[tensor_type](params)
+
     def __init__(self, name, indices_pair, priority=0):
         """
         The tensor class.
@@ -129,49 +172,38 @@ class Tensor:
         :return: a Tensor object labeled by spin-integrated indices
         """
         for indices_pair in self.indices_pair.generate_spin_cases(particle_conserving):
-            yield Tensor(self.name, indices_pair, self.priority)
+            yield self.__class__(self.name, indices_pair, self.priority)
 
 
+@Tensor.register_subclass('cumulant')
 class Cumulant(Tensor):
-    def __init__(self, upper_indices, lower_indices):
-        Tensor.__init__(self, "L", upper_indices, lower_indices, priority=3)
-        return
+    def __init__(self, indices_pair):
+        Tensor.__init__(self, "L", indices_pair, priority=3)
 
 
+@Tensor.register_subclass('hole_density')
 class HoleDensity(Tensor):
-    def __init__(self, upper_indices, lower_indices):
-        if len(upper_indices) != 1 or len(lower_indices) != 1:
+    def __init__(self, indices_pair):
+        Tensor.__init__(self, "C", indices_pair, priority=3)
+        if self.n_upper != 1 or self.n_lower != 1:
             raise ValueError("Hole density should be of 1 body.")
-        Tensor.__init__(self, "C", upper_indices, lower_indices, priority=3)
-        return
 
 
+@Tensor.register_subclass('Kronecker')
 class Kronecker(Tensor):
-    def __init__(self, upper_indices, lower_indices):
-        if len(upper_indices) != 1 or len(lower_indices) != 1:
+    def __init__(self, indices_pair):
+        Tensor.__init__(self, "K", indices_pair, priority=2)
+        if self.n_upper != 1 or self.n_lower != 1:
             raise ValueError("Kronecker delta should be of 1 body.")
-        Tensor.__init__(self, "K", upper_indices, lower_indices, priority=2)
-        return
 
 
-class ClusterAmp(Tensor):
-    def __init__(self, upper_indices, lower_indices):
-        Tensor.__init__(self, "T", upper_indices, lower_indices, priority=1)
-        return
+@Tensor.register_subclass('cluster_amplitude')
+class ClusterAmplitude(Tensor):
+    def __init__(self, indices_pair):
+        Tensor.__init__(self, "T", indices_pair, priority=1)
 
 
+@Tensor.register_subclass('Hamiltonian')
 class Hamiltonian(Tensor):
-    def __init__(self, upper_indices, lower_indices):
-        Tensor.__init__(self, "H", upper_indices, lower_indices, priority=0)
-        return
-
-
-def test_tensor_class():
-    tensor = Tensor("T", ['a1', 'a2'], ['c3', 'p0'])
-    assert str(tensor) == "T^{ a_{1} a_{2} }_{ c_{3} p_{0} }", "Tensor format failed."
-    assert tensor.ambit() == 'T2["a1,a2,c3,p0"]', "Tensor format ambit failed."
-    tensor_c, tensor_sign = tensor.canonicalize_copy()
-    assert tensor_c == Tensor("T", ['a1', 'a2'], ['p0', 'c3']), "Tensor canonicalize failed."
-    assert tensor_sign == -1, "Tensor canonicalize sign failed."
-    assert tensor_c <= tensor, "Tensor comparison <= failed."
-    print("Tensor tests passed.")
+    def __init__(self, indices_pair):
+        Tensor.__init__(self, "H", indices_pair, priority=0)

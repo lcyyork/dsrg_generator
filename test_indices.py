@@ -11,7 +11,7 @@ def test_indices_init():
     a = Indices("a0, P2")
     assert a.indices == [Index("a0"), Index("P2")]
     assert a.size == 2
-    assert a.set == {Index("a0"), Index("P2")}
+    assert a.indices_set == {Index("a0"), Index("P2")}
 
 
 def test_indices_str():
@@ -111,10 +111,27 @@ def test_indices_so_latex_perm():
 def test_indices_so_spin():
     ref = ["c0, c1, g0", "c0, c1, G0", "c0, C1, g0", "C0, c1, g0",
            "c0, C1, G0", "C0, c1, G0", "C0, C1, g0", "C0, C1, G0"]
-    ref = list(map(IndicesSpinIntegrated, ref))
+    ref = set(map(IndicesSpinIntegrated, ref))
     a = IndicesSpinOrbital("c0, c1, g0")
     for i in a.generate_spin_cases():
         assert i in ref
+        ref.remove(i)
+    assert len(ref) == 0
+
+    ref = ["c0, C1, G0", "C0, c1, G0", "C0, C1, g0"]
+    ref = set(map(IndicesSpinIntegrated, ref))
+    for i in a.generate_spin_cases(2):
+        assert i in ref
+        ref.remove(i)
+    assert len(ref) == 0
+
+    with pytest.raises(TypeError):
+        for _ in a.generate_spin_cases('a'):
+            pass
+
+    with pytest.raises(ValueError):
+        for _ in a.generate_spin_cases(9):
+            pass
 
 
 def test_indices_si_canonical():

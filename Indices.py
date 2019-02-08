@@ -1,5 +1,5 @@
 import collections
-from itertools import product
+from itertools import product, combinations
 from sympy.utilities.iterables import multiset_permutations
 from mo_space import space_priority
 from Index import Index
@@ -11,10 +11,10 @@ def sort_and_count_inversions(array):
     if n <= 1:
         return array, 0
     else:
-        nhalf = n // 2
+        n_half = n // 2
 
-        left, x = sort_and_count_inversions(array[:nhalf])
-        right, y = sort_and_count_inversions(array[nhalf:])
+        left, x = sort_and_count_inversions(array[:n_half])
+        right, y = sort_and_count_inversions(array[n_half:])
         result, z = merge_and_count_split_inversion(left, right)
 
         return result, x + y + z
@@ -24,18 +24,18 @@ def merge_and_count_split_inversion(left, right):
     """ Merge two lists (left, right) into sorted_result and count inversions. """
     i, j = 0, 0
     count = 0
-    nleft = len(left)
-    nright = len(right)
-    n = nleft + nright
+    n_left = len(left)
+    n_right = len(right)
+    n = n_left + n_right
     sorted_result = [0] * n
 
     for k in range(n):
-        if i == nleft:
+        if i == n_left:
             sorted_result[k] = right[j]
             j += 1
             continue
 
-        if j == nright:
+        if j == n_right:
             sorted_result[k] = left[i]
             i += 1
             continue
@@ -45,7 +45,7 @@ def merge_and_count_split_inversion(left, right):
             i += 1
         else:
             sorted_result[k] = right[j]
-            count += nleft - i
+            count += n_left - i
             j += 1
 
     return sorted_result, count
@@ -102,7 +102,7 @@ class Indices:
 
         self._indices = indices
         self._size = size
-        self._set = indices_set
+        self._indices_set = indices_set
 
         self._spin_count = [None, None]  # the number of alpha and beta indices
         self._spin_pure = None
@@ -116,8 +116,8 @@ class Indices:
         return self._size
 
     @property
-    def set(self):
-        return self._set
+    def indices_set(self):
+        return self._indices_set
 
     def __repr__(self):
         return ", ".join(map(str, self.indices))
@@ -177,7 +177,7 @@ class Indices:
         return hash(tuple(self))
 
     def __contains__(self, value):
-        return value in self.set
+        return value in self.indices_set
 
     def __add__(self, other):
         self._is_valid_operand_weak(other)
@@ -186,11 +186,11 @@ class Indices:
 
     def __iadd__(self, other):
         self._is_valid_operand_weak(other)
-        if len(self.set.intersection(other.set)) != 0:
+        if len(self.indices_set.intersection(other.indices_set)) != 0:
             raise ValueError("Two Indices objects contain common Index, thus cannot be added.")
         self._indices += other.indices
         self._size += other.size
-        self._set = self.set.union(other.set)
+        self._set = self.indices_set.union(other.indices_set)
         return self
 
     def clone(self):
@@ -204,7 +204,7 @@ class Indices:
     def is_permutation(self, other):
         """ Return True if there exists a permutation to bring self to other. """
         self._is_valid_operand_weak(other)
-        return self.set == other.set
+        return self.indices_set == other.indices_set
 
     def count_permutations(self, other):
         """ Count the number of permutations needed from self to other. """
@@ -294,9 +294,10 @@ class Indices:
     def n_beta(self):
         return self.spin_count[1]
 
-    def generate_spin_cases(self):
+    def generate_spin_cases(self, n_beta=None):
         """
         Generate spin-integrated indices from spin-orbital indices.
+        :param n_beta: the number of beta indices asked, all possible values by default
         :return: IndicesSpinIntegrated object, e.g., a0,g0 -> a0,g0; a0,G0; A0,g0; A0,G0
         """
         raise TypeError("Only available for spin-orbital indices.")
@@ -387,14 +388,27 @@ class IndicesSpinOrbital(IndicesAntisymmetric):
             if index.is_beta():
                 raise ValueError("Spin-orbital indices should all be in lowercase.")
 
-    def generate_spin_cases(self):
+    def generate_spin_cases(self, n_beta=None):
         """
         Generate spin-integrated indices from spin-orbital indices.
+        :param n_beta: the number of beta indices asked, all possible values by default
         :return: IndicesSpinIntegrated object, e.g., a0,g0 -> a0,g0; a0,G0; A0,g0; A0,G0
         """
-        for spins in product(range(2), repeat=self.size):
-            indices = list(map(lambda i, s: i if not s else i.to_beta(), self.indices, spins))
-            yield IndicesSpinIntegrated(indices)
+        if n_beta is None:
+            for spins in product(range(2), repeat=self.size):
+                indices = list(map(lambda idx, s: idx if not s else idx.to_beta(), self.indices, spins))
+                yield IndicesSpinIntegrated(indices)
+        else:
+            if not isinstance(n_beta, int):
+                raise TypeError(f"Invalid n_beta, given '{n_beta.__class__.__name__}', required 'int'.")
+            if n_beta > self.size:
+                raise ValueError(f"Invalid n_beta value, given '{n_beta}', required 0 <= n_beta <= {self.size}.")
+
+            for beta_indices in combinations(range(self.size), n_beta):
+                indices = [i for i in self.indices]
+                for idx in beta_indices:
+                    indices[idx] = indices[idx].to_beta()
+                yield IndicesSpinIntegrated(indices)
 
 
 @Indices.register_subclass('spin-integrated')

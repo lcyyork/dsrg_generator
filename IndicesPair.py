@@ -116,13 +116,18 @@ class IndicesPair:
         """
         if not isinstance(self.upper_indices, IndicesSpinOrbital):
             raise TypeError("Only available for spin-orbital indices.")
-        for upper_indices in self.upper_indices.generate_spin_cases():
-            upper_spin = upper_indices.spin_count
-            for lower_indices in self.lower_indices.generate_spin_cases():
-                if particle_conserving:
-                    if upper_spin == lower_indices.spin_count:
-                        yield IndicesPair(upper_indices, lower_indices)
-                else:
+
+        if particle_conserving and (self.n_upper != self.n_lower):
+            raise ValueError("Invalid option. Number of particles cannot be preserved.")
+
+        if particle_conserving:
+            for upper_indices in self.upper_indices.generate_spin_cases():
+                n_beta = upper_indices.n_beta()
+                for lower_indices in self.lower_indices.generate_spin_cases(n_beta):
+                    yield IndicesPair(upper_indices, lower_indices)
+        else:
+            for upper_indices in self.upper_indices.generate_spin_cases():
+                for lower_indices in self.lower_indices.generate_spin_cases():
                     yield IndicesPair(upper_indices, lower_indices)
 
     def canonicalize(self):

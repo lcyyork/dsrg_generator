@@ -101,6 +101,10 @@ class Tensor:
     def comparison_tuple(self):
         return self.priority, self.name, self.size, self.indices_pair
 
+    @property
+    def type_of_indices(self):
+        return self.indices_pair.type_of_indices
+
     @staticmethod
     def _is_valid_operand(other):
         if not isinstance(other, Tensor):

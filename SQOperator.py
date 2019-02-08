@@ -47,6 +47,10 @@ class SecondQuantizedOperator:
     def n_ops(self):
         return self.n_cre + self.n_ann
 
+    @property
+    def type_of_indices(self):
+        return self.indices_pair.type_of_indices
+
     @staticmethod
     def _is_valid_operand(other):
         if not isinstance(other, SecondQuantizedOperator):

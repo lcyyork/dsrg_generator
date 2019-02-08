@@ -59,6 +59,10 @@ class IndicesPair:
     def size(self):
         return self._n_upper + self._n_lower
 
+    @property
+    def type_of_indices(self):
+        return self.upper_indices.__class__
+
     def is_empty(self):
         return self.size == 0
 

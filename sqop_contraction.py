@@ -4,12 +4,106 @@ from itertools import combinations, product
 from math import factorial
 from sympy.utilities.iterables import multiset_permutations
 from integer_partition import integer_partition
-from Index import space_relation
-from Indices import Indices
-from SQOperator import SQOperator
-from Tensor import HoleDensity, Cumulant, Kronecker, Hamiltonian, ClusterAmp
+from mo_space import space_relation
+from Indices import Indices, IndicesSpinOrbital
+from SQOperator import SecondQuantizedOperator
+from IndicesPair import IndicesPair
+from Tensor import make_tensor_preset
 from Term import Term, read_latex_term
 from Timer import Timer
+
+
+def generate_ele_cont(ops_list, max_cu=3):
+    """
+    Generate all elementary contractions from a list of second-quantized operators.
+    :param ops_list: a list of SecondQuantizedOperator objects
+    :param max_cu: the max level of cumulants
+    :return: a list of elementary contractions represented by HoleDensity and Cumulant
+    """
+    for op in ops_list:
+        if not isinstance(op, SecondQuantizedOperator):
+            raise TypeError(f"Invalid type in ops_list, given '{op.__class__.__name__}', "
+                            f"required 'SecondQuantizedOperator'.")
+        if op.type_of_indices != type(IndicesSpinOrbital):
+            raise NotImplementedError(f"Contractions only supports spin-orbital indices now.")
+    if not isinstance(max_cu, int):
+        raise TypeError(f"Invalid type of max_cu, given '{max_cu.__class__.__name__}', required 'int'.")
+
+    # determine if max_cu makes sense (cumulant indices cannot be core or virtual)
+    cv = ["c", "v"]
+    n_valid_cre = sum([op.n_cre - op.cre_ops.count_index_space(cv) for op in ops_list])
+    n_valid_ann = sum([op.n_ann - op.ann_ops.count_index_space(cv) for op in ops_list])
+    max_cu_allowed = max(1, min(n_valid_cre, n_valid_ann))
+    if max_cu < 1 or max_cu > max_cu_allowed:
+        print(f"Max cumulant level is set to {max_cu_allowed}.")
+        max_cu = max_cu_allowed
+
+    out_list = []
+
+    # 1-body cumulant and hole density
+    for i, left in enumerate(ops_list):
+        for right in ops_list[i + 1:]:
+            for u in left.cre_ops:
+                if u.space == 'v':
+                    continue
+                for l in right.ann_ops:
+                    if l.space == 'v':
+                        continue
+                    if len(space_relation[u.space] & space_relation[l.space]) != 0:
+                        out_list.append(make_tensor_preset([u], [l], 'spin-orbital', 'cumulant'))
+            for l in left.ann_ops:
+                if l.space == 'c':
+                    continue
+                for u in right.cre_ops:
+                    if u.space == 'c':
+                        continue
+                    if len(space_relation[u.space] & space_relation[l.space]) != 0:
+                        out_list.append(make_tensor_preset([u], [l], 'spin-orbital', 'hole_density'))
+    if max_cu < 2:
+        return out_list
+
+    # for cumulant, since n_cre = n_ann, consider cre/ann separately
+    cre_ops_list = [Indices([i for i in op.cre_ops if i.space not in cv]) for op in ops_list]
+    ann_ops_list = [Indices([i for i in op.ann_ops if i.space not in cv]) for op in ops_list]
+
+    # generate all possible sub-indices for each cre/ann operators of each second-quantized operator
+    # [{nleg: [relative indices of current cre/ann operators]}, ...]
+    cre_sub_indices = [{n_leg: [ele_ops for ele_ops in combinations(range(ops.size), n_leg)]
+                        for n_leg in range(1, min(max_cu, ops.size) + 1)} for ops in cre_ops_list]
+    ann_sub_indices = [{n_leg: [ele_ops for ele_ops in combinations(range(ops.size), n_leg)]
+                        for n_leg in range(1, min(max_cu, ops.size) + 1)} for ops in ann_ops_list]
+
+    # generate all possible partitions for k cre/ann legs for k cumulant
+    n_sq_ops = len(ops_list)
+    partitions = []
+    for k in range(1, max_cu + 1):
+        partitions += [part for part in integer_partition(k) if len(part) <= n_sq_ops]
+
+    def generate_half_cumulant_contractions(part, op_indices, is_cre):
+        """
+        Generate cumulant contractions for pure creation and annihilation operators
+        :param part: a partition of k for k-cumulant
+        :param op_indices: a list of indices of chosen operator in the input operator list
+        :param is_cre: True for creation part, False for annihilation part
+        :return: generate viable half cumulant contractions
+        """
+        pure_ops_lists = cre_lists if is_cre else ann_lists
+        pure_ops_sub_indices = cre_sub_indices if is_cre else ann_sub_indices
+
+        def check_viable():
+            for i, n_leg in zip(op_indices, part):
+                if len(pure_ops_lists[i]) < nleg:
+                    return False
+            return True
+
+        if check_viable():
+            temp = [pure_ops_sub_indices[i][nleg] for i, nleg in zip(op_indices, part)]
+            for sub_indices_product in product(*temp):
+                result = []
+                for sub_indices, i in zip(sub_indices_product, sqop_ids):
+                    for index in sub_indices:
+                        result.append((i, index))
+                yield result
 
 
 def generate_elementary_contractions(sqops, maxcu=3):

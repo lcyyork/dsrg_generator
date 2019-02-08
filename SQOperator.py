@@ -128,3 +128,12 @@ class SecondQuantizedOperator:
                 for sign_2, str_2 in second.ambit_permute_format():
                     print(sign_2, str_2)
                     yield sign_1 * sign_2, str_1 + ',' + str_2
+
+    def generate_spin_cases(self, particle_conserving=True):
+        """
+        Generate spin-integrated second-quantized operator from spin-orbital indices.
+        :param particle_conserving: True if generated indices preserve the spin
+        :return: a SecondQuantizedOperator using spin-integrated indices pair
+        """
+        for indices_pair in self.indices_pair.generate_spin_cases(particle_conserving):
+            yield SecondQuantizedOperator(indices_pair)

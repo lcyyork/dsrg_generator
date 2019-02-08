@@ -122,6 +122,15 @@ class Tensor:
         indices_pair, sign = self.indices_pair.canonicalize()
         return self.__class__(self.name, indices_pair, self.priority), sign
 
+    def generate_spin_cases(self, particle_conserving=True):
+        """
+        Generate tensors labeled by spin-integrated indices from spin-orbital indices.
+        :param particle_conserving: True if generated indices preserve the spin
+        :return: a Tensor object labeled by spin-integrated indices
+        """
+        for indices_pair in self.indices_pair.generate_spin_cases(particle_conserving):
+            yield Tensor(self.name, indices_pair, self.priority)
+
 
 class Cumulant(Tensor):
     def __init__(self, upper_indices, lower_indices):

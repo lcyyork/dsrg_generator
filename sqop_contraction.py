@@ -63,47 +63,70 @@ def generate_ele_cont(ops_list, max_cu=3):
         return out_list
 
     # for cumulant, since n_cre = n_ann, consider cre/ann separately
-    cre_ops_list = [Indices([i for i in op.cre_ops if i.space not in cv]) for op in ops_list]
-    ann_ops_list = [Indices([i for i in op.ann_ops if i.space not in cv]) for op in ops_list]
-
-    # generate all possible sub-indices for each cre/ann operators of each second-quantized operator
-    # [{nleg: [relative indices of current cre/ann operators]}, ...]
-    cre_sub_indices = [{n_leg: [ele_ops for ele_ops in combinations(range(ops.size), n_leg)]
-                        for n_leg in range(1, min(max_cu, ops.size) + 1)} for ops in cre_ops_list]
-    ann_sub_indices = [{n_leg: [ele_ops for ele_ops in combinations(range(ops.size), n_leg)]
-                        for n_leg in range(1, min(max_cu, ops.size) + 1)} for ops in ann_ops_list]
+    cre_ops_list = [IndicesSpinOrbital([i for i in op.cre_ops if i.space not in cv]) for op in ops_list]
+    ann_ops_list = [IndicesSpinOrbital([i for i in op.ann_ops if i.space not in cv]) for op in ops_list]
 
     # generate all possible partitions for k cre/ann legs for k cumulant
+    # only unique partitions here, e.g., [2,1,1] included, not [1,2,1] or [1,1,2]
     n_sq_ops = len(ops_list)
-    partitions = []
-    for k in range(1, max_cu + 1):
-        partitions += [part for part in integer_partition(k) if len(part) <= n_sq_ops]
+    unique_partitions = [part for part in integer_partition(k) if len(part) <= n_sq_ops
+                         for k in range(1, max_cu + 1)]
 
-    def generate_half_cumulant_contractions(part, op_indices, is_cre):
+    # generate all possible pure creation or annihilation cumulant contractions
+    def generate_half_cumulant_contractions(pure_ops_list):
         """
-        Generate cumulant contractions for pure creation and annihilation operators
-        :param part: a partition of k for k-cumulant
-        :param op_indices: a list of indices of chosen operator in the input operator list
-        :param is_cre: True for creation part, False for annihilation part
-        :return: generate viable half cumulant contractions
+        Generate cumulant contractions for pure creation and annihilation operators.
+        :param pure_ops_list: a list of pure creation or annihilation indices for each input operator
+        :return: a map of {cumulant level: [chosen indices represented by (op index, relative index)]}
         """
-        pure_ops_lists = cre_lists if is_cre else ann_lists
-        pure_ops_sub_indices = cre_sub_indices if is_cre else ann_sub_indices
+        results = {i: [] for i in range(2, maxcu + 1)}
 
-        def check_viable():
-            for i, n_leg in zip(op_indices, part):
-                if len(pure_ops_lists[i]) < nleg:
-                    return False
-            return True
+        # generate all possible sub-indices for each input second-quantized operator
+        # [{nleg: [relative indices of the current string of cre/ann operators]}, ...]
+        sub_indices = [{n_leg: [ele_ops for ele_ops in combinations(range(ops.size), n_leg)]
+                        for n_leg in range(1, min(max_cu, ops.size) + 1)} for ops in pure_ops_list]
 
-        if check_viable():
-            temp = [pure_ops_sub_indices[i][nleg] for i, nleg in zip(op_indices, part)]
-            for sub_indices_product in product(*temp):
-                result = []
-                for sub_indices, i in zip(sub_indices_product, sqop_ids):
-                    for index in sub_indices:
-                        result.append((i, index))
-                yield result
+        for unique_partition in unique_partitions:
+            n_ops = len(unique_partition)
+            cu_level = sum(unique_partition)
+
+            for partition in multiset_permutations(unique_partition):
+
+                # choose n_ops from ops_list
+                for ops in combinations(range(n_sq_ops), n_ops):
+
+                    # check if this partition is valid on this ops
+                    if any([len(pure_ops_list[i]) < n_leg for i, n_leg in zip(ops, partition)]):
+                        continue
+
+                    # generate all possibilities
+                    for sub_indices_product in product(*[sub_indices[i][n_leg] for i, n_leg in zip(ops, partition)]):
+                        results[cu_level].append([(i, index) for i, indices in zip(ops, sub_indices_product)
+                                                  for index in indices])
+
+        return results
+
+    ann_results = generate_half_cumulant_contractions(ann_ops_list)
+    cre_results = generate_half_cumulant_contractions(cre_ops_list)
+
+    def all_equal_elements(lst):
+        return lst.count(lst[0]) == len(lst)
+
+    # now combine the cre/ann results
+    for cu_level in range(2, maxcu + 1):
+        for cre in cre_results[cu_level]:
+            same_sq_op_cre = all_equal_elements([cre[i][0] for i in range(cu_level)])
+            cre_indices = [cre_ops_list[cre[i][0]][cre[i][1]] for i in range(cu_level)]
+            for ann in ann_results[cu_level]:
+                # skip when cre and ann belong to same operator
+                same_sq_op_ann = all_equal_elements([ann[i][0] for i in range(cu_level)])
+                if same_sq_op_cre and same_sq_op_ann and cre[0][0] == ann[0][0]:
+                    continue
+                else:
+                    ann_indices = [ann_ops_list[ann[i][0]][ann[i][1]] for i in range(cu_level)]
+                    out_list.append(IndicesSpinOrbital(cre_indices + ann_indices))
+
+    return out_list
 
 
 def generate_elementary_contractions(sqops, maxcu=3):

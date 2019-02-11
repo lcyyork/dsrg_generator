@@ -61,7 +61,7 @@ class Tensor:
             raise TypeError(f"Invalid tensor::indices_pair, given '{t}', required 'IndicesPair'.")
         self._indices_pair = indices_pair
 
-        if not isinstance(property, int):
+        if not isinstance(priority, int):
             raise TypeError(f"Invalid tensor::priority, given '{priority.__class__.__name__}', required 'int'.")
         self._priority = priority
 

@@ -177,7 +177,9 @@ class Tensor:
         :return: a tuple of (tensor with sorted indices, sign)
         """
         indices_pair, sign = self.indices_pair.canonicalize()
-        return self.__class__(self.name, indices_pair, self.priority), sign
+        if self.__class__ in Tensor.subclasses.values():
+            return self.__class__(indices_pair), sign
+        return Tensor(self.name, indices_pair, self.priority), sign
 
     def generate_spin_cases(self, particle_conserving=True):
         """
@@ -185,8 +187,12 @@ class Tensor:
         :param particle_conserving: True if generated indices preserve the spin
         :return: a Tensor object labeled by spin-integrated indices
         """
-        for indices_pair in self.indices_pair.generate_spin_cases(particle_conserving):
-            yield self.__class__(self.name, indices_pair, self.priority)
+        if self.__class__ in Tensor.subclasses.values():
+            for indices_pair in self.indices_pair.generate_spin_cases(particle_conserving):
+                yield self.__class__(indices_pair)
+        else:
+            for indices_pair in self.indices_pair.generate_spin_cases(particle_conserving):
+                yield Tensor(self.name, indices_pair, self.priority)
 
 
 @Tensor.register_subclass('cumulant')

@@ -6,8 +6,9 @@ from sympy.utilities.iterables import multiset_permutations
 from integer_partition import integer_partition
 from mo_space import space_relation
 from Indices import Indices, IndicesSpinOrbital
+from IndicesPair import IndicesPair
 from SQOperator import SecondQuantizedOperator
-from Tensor import make_tensor_preset
+from Tensor import make_tensor_preset, HoleDensity, Kronecker, Cumulant
 from Timer import Timer
 
 
@@ -80,7 +81,7 @@ def generate_elementary_contractions(ops_list, max_cu=3):
         results = {i: [] for i in range(2, max_cu + 1)}
 
         # generate all possible sub-indices for each input second-quantized operator
-        # [{nleg: [relative indices of the current string of cre/ann operators]}, ...]
+        # [{n_leg: [relative indices of the current string of cre/ann operators]}, ...]
         sub_indices = [{n_leg: [ele_ops for ele_ops in combinations(range(ops.size), n_leg)]
                         for n_leg in range(1, min(max_cu, ops.size) + 1)} for ops in pure_ops_list]
 
@@ -126,292 +127,145 @@ def generate_elementary_contractions(ops_list, max_cu=3):
 
     return out_list
 
-#
-# def generate_elementary_contractions(sqops, maxcu=3):
-#     """
-#     Generate all elementary contractions from a list of second-quantized operators.
-#     :param sqops: a list of SQOperators
-#     :param maxcu: max level of cumulants
-#     :return: a list of elementary contractions (represented by Indices)
-#     """
-#
-#     # determine if maxcu makes sense (indices cannot be core or virtual)
-#     cv = ["c", "v"]
-#     ncre_sum = sum([op.ncre - op.Uindices.count_index_space(cv) for op in sqops])
-#     nann_sum = sum([op.nann - op.Lindices.count_index_space(cv) for op in sqops])
-#     maxcu_allowed = max(1, min(ncre_sum, nann_sum))
-#     if maxcu < 1 or maxcu > maxcu_allowed:
-#         maxcu = maxcu_allowed
-#         print("Max level cumulant is set to {}".format(maxcu_allowed))
-#
-#     out = []
-#
-#     # 1-cumulant (1-particle density)
-#     for i, left in enumerate(sqops):
-#         for right in sqops[i + 1:]:
-#             for u in left.Uindices:
-#                 if u.space == 'v':
-#                     continue
-#                 for l in right.Lindices:
-#                     if l.space == 'v':
-#                         continue
-#                     if len(space_relation[u.space] & space_relation[l.space]) != 0:
-#                         out.append(Indices([u, l]))
-#
-#     # 1-hole density
-#     hole_start = len(out)
-#     hole_count = 0
-#     for i, left in enumerate(sqops):
-#         for right in sqops[i + 1:]:
-#             for l in left.Lindices:
-#                 if l.space == 'c':
-#                     continue
-#                 for u in right.Uindices:
-#                     if u.space == 'c':
-#                         continue
-#                     if len(space_relation[l.space] & space_relation[u.space]) != 0:
-#                         out.append(Indices([u, l]))
-#                         hole_count += 1
-#
-#     # return if no need for cumulant
-#     if maxcu < 2:
-#         return out, (hole_start, hole_start + hole_count)
-#
-#     # for cumulant, since ncre = nann, consider cre/ann separately
-#     nsqops = len(sqops)
-#     cre_lists = [Indices([i for i in op.Uindices if i.space not in cv]) for op in sqops]
-#     ann_lists = [Indices([i for i in op.Lindices if i.space not in cv]) for op in sqops]
-#
-#     def generate_sub_indices(ops_lists):
-#         """
-#         Generate all possible sub-indices for each cre/ann string of each sqop.
-#         :param ops_lists: a list of cre/ann string
-#         :return: [{nleg: [relative indices of current cre/ann string]}, ...] for each sqop
-#         """
-#         return [{nleg: [ele_ops for ele_ops in combinations(range(ops_lists[i].size), nleg)]
-#                  for nleg in range(1, min(maxcu, ops_lists[i].size) + 1)}
-#                 for i in range(nsqops)]
-#
-#     cre_sub_indices = generate_sub_indices(cre_lists)
-#     ann_sub_indices = generate_sub_indices(ann_lists)
-#
-#     # generate all possible partitions for k cre/ann legs for k cumulant
-#     partitions = []
-#     for k in range(1, maxcu + 1):
-#         for part in integer_partition(k):
-#             if len(part) <= nsqops:
-#                 partitions.append(part)
-#
-#     def check_viable(part, op_ids, lists):
-#         """
-#         Check if the partition is viable on the chosen sqops
-#         :param part: a partition
-#         :param op_ids: a list of sqop indices in sqops
-#         :param lists: list of cre/ann operators
-#         :return: True if viable, False otherwise
-#         """
-#         for i, nleg in zip(op_ids, part):
-#             if len(lists[i]) < nleg:
-#                 return False
-#         return True
-#
-#     def generate_half_cumulant_contractions(part, sqop_ids, is_cre):
-#         """
-#         Generate cumulant contractions for pure creation and annihilation operators
-#         :param part: a partition of k for k-cumulant
-#         :param sqop_ids: a list of indices of chosen sqop in sqops
-#         :param is_cre: True for creation part, False for annihilation part
-#         :return: generate viable half cumulant contractions
-#         """
-#         ops_lists = cre_lists if is_cre else ann_lists
-#         ops_sub_indices = cre_sub_indices if is_cre else ann_sub_indices
-#
-#         if check_viable(part, sqop_ids, ops_lists):
-#             temp = [ops_sub_indices[i][nleg] for i, nleg in zip(sqop_ids, part)]
-#             for sub_indices_product in product(*temp):
-#                 result = []
-#                 for sub_indices, i in zip(sub_indices_product, sqop_ids):
-#                     for index in sub_indices:
-#                         result.append((i, index))
-#                 yield result
-#
-#     # cre/ann contractions from 2 to maxcu
-#     cre_results = {i: [] for i in range(2, maxcu + 1)}
-#     ann_results = {i: [] for i in range(2, maxcu + 1)}
-#
-#     # generate cre/ann contractions separately
-#     for part_unique in partitions:
-#         nops = len(part_unique)
-#         cu_level = sum(part_unique)
-#         for part in multiset_permutations(part_unique):  # multiset permutation of integer partition
-#             for ops in combinations(range(nsqops), nops):  # choose nops from sqops list
-#                 # creation combinations
-#                 for indices in generate_half_cumulant_contractions(part, ops, True):
-#                     cre_results[cu_level].append(indices)
-#                 # annihilation combinations
-#                 for indices in generate_half_cumulant_contractions(part, ops, False):
-#                     ann_results[cu_level].append(indices)
-#
-#     # now combine the cre/ann results
-#     for cu_level in range(2, maxcu + 1):
-#         for cre in cre_results[cu_level]:
-#             i_creops = [cre[i][0] for i in range(cu_level)]
-#             same_sqop_cre = i_creops.count(i_creops[0]) == len(i_creops)
-#             cre_indices = [cre_lists[cre[i][0]][cre[i][1]] for i in range(cu_level)]
-#             for ann in ann_results[cu_level]:
-#                 if same_sqop_cre:
-#                     i_annops = [ann[i][0] for i in range(cu_level)]
-#                     same_sqop = i_annops.count(i_annops[0]) == len(i_annops) and i_creops[0] == i_annops[0]
-#                     if not same_sqop:
-#                         indices = cre_indices + [ann_lists[ann[i][0]][ann[i][1]] for i in range(cu_level)]
-#                         out.append(Indices(indices))
-#                 else:
-#                     indices = cre_indices + [ann_lists[ann[i][0]][ann[i][1]] for i in range(cu_level)]
-#                     out.append(Indices(indices))
-#
-#     return out, (hole_start, hole_start + hole_count)
-#
-#
-# def generate_operator_contractions(sqops, maxcu=3, maxmb=3, minmb=0, expand_hole=True):
-#     """
-#     Generate operator contractions for a list of SQOperator.
-#     :param sqops: a list of SQOperator to be contracted
-#     :param maxcu: max level of cumulant
-#     :param maxmb: max body term kept for return
-#     :param minmb: min body term kept for return
-#     :param expand_hole: expand hole density to Kronecker delta and 1-cumulant if True
-#     :return: a map of number of open indices to contractions
-#     """
-#     # generate elementary contractions
-#     elementary_contractions, (hole_start, hole_end) = generate_elementary_contractions(sqops, maxcu)
-#     n_ele_con = len(elementary_contractions)
-#
-#     # generate incompatible contractions between elementary contractions
-#     # the list index of elementary_contractions is saved
-#     incompatible_elementary = {i: set() for i in range(n_ele_con)}
-#     for i in range(n_ele_con):
-#         ele_i = elementary_contractions[i]
-#         for j in range(i + 1, n_ele_con):
-#             ele_j = elementary_contractions[j]
-#             if len(ele_i.set & ele_j.set) != 0:
-#                 incompatible_elementary[i].add(j)
-#                 incompatible_elementary[j].add(i)
-#
-#     # backtracking (similar to generating sublists)
-#     contractions = []
-#     composite_contractions_backtracking(set(range(n_ele_con)), set(), incompatible_elementary, contractions)
-#
-#     # translate contractions to readable form
-#     results = defaultdict(list)
-#
-#     base_order = []
-#     uindices_set, lindices_set = set(), set()
-#     for sqop in sqops:
-#         base_order += sqop.Uindices.indices + sqop.Lindices.indices[::-1]
-#         uindices_set |= sqop.Uindices.set
-#         lindices_set |= sqop.Lindices.set
-#     nops = len(base_order)
-#
-#     for con in contractions:  # con is a list of indices of elementary contractions
-#         nops_con = sum([elementary_contractions[i].size for i in con])
-#         nops_open = nops - nops_con
-#         if 2 * minmb <= nops_open <= 2 * maxmb:
-#             # figure out the list of densities
-#             list_of_tensors = []
-#             current_order = []
-#             for i_con in con:
-#                 ele_con = elementary_contractions[i_con]
-#                 mid = ele_con.size // 2
-#                 if hole_start <= i_con < hole_end:
-#                     current_order += ele_con.indices[::-1]  # ann comes before cre for hole density
-#                     list_of_tensors.append(HoleDensity(ele_con.indices[:mid], ele_con.indices[mid:]))
-#                 else:
-#                     current_order += ele_con.indices
-#                     # need to reverse the ordering for annihilation operators
-#                     list_of_tensors.append(Cumulant(ele_con.indices[:mid], ele_con.indices[-1:-mid-1:-1]))
-#
-#             # expand hole densities to delta - lambda1
-#             if expand_hole:
-#                 signed_list_tensors = expand_hole_densities(list_of_tensors)
-#             else:
-#                 signed_list_tensors = [(1, list_of_tensors)]
-#
-#             # sort the indices for uncontracted operators
-#             uindices, lindices = Indices([]), Indices([])
-#             if nops_open != 0:
-#                 uindices = Indices(sorted(uindices_set - set(current_order)))
-#                 lindices = Indices(sorted(lindices_set - set(current_order)))
-#                 current_order += uindices.indices + lindices.indices[::-1]
-#
-#             sign = (-1) ** (Indices(base_order).count_permutations(Indices(current_order)))
-#             for _sign, list_of_tensors in signed_list_tensors:
-#                 results[nops_open].append((sign * _sign, list_of_tensors, SQOperator(uindices, lindices)))
-#
-#     return results
-#
-#
-# def composite_contractions_backtracking(available, chosen, incompatible, out):
-#     """
-#     Generate composite contractions from elementary contractions.
-#     :param available: unexplored set of elementary contractions
-#     :param chosen: chosen set of elementary contractions
-#     :param incompatible: a map to test incompatible elementary contractions
-#     :param out: final results from outside
-#     :return: viable composite contractions
-#     """
-#     if len(available) == 0:  # base case, nothing to choose
-#         if len(chosen) != 0:
-#             out.append(deepcopy(chosen))
-#     else:
-#         # two choices to explore: with or without the given element
-#         temp = available.pop()  # choose
-#
-#         chosen.add(temp)  # choose to include this element
-#         composite_contractions_backtracking(available - incompatible[temp], chosen, incompatible, out)
-#
-#         chosen.remove(temp)  # choose not to include this element
-#         composite_contractions_backtracking(available, chosen, incompatible, out)
-#
-#         available.add(temp)  # unchoose
-#
-#
-# def expand_hole_densities(list_of_tensors):
-#     """
-#     Expand all the hole densities in the list_of_tensors.
-#     :param list_of_tensors: a list of Tensor objects
-#     :return: a list of (sign, expanded Tensor objects)
-#     """
-#     out = []
-#
-#     good_tensors = []
-#     hole_densities = []
-#     for tensor in list_of_tensors:
-#         if isinstance(tensor, HoleDensity):
-#             hole_densities.append(tensor)
-#         else:
-#             good_tensors.append(tensor)
-#
-#     nhole = len(hole_densities)
-#     if nhole == 0:
-#         out.append((1, list_of_tensors))
-#     else:
-#         for temp in product(range(2), repeat=nhole):
-#             sign = (-1) ** sum(temp)
-#             expanded = []
-#             for i in range(nhole):
-#                 Uindices, Lindices = hole_densities[i].Uindices, hole_densities[i].Lindices
-#                 if temp[i] == 0:
-#                     expanded.append(Kronecker(Uindices, Lindices))
-#                 else:
-#                     if Uindices[0].space != 'v' and Lindices[0].space != 'v':
-#                         expanded.append(Cumulant(Uindices, Lindices))
-#             if len(expanded) != nhole:
-#                 continue
-#             out.append((sign, good_tensors + expanded))
-#
-#     return out
-#
-#
+
+def generate_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0, expand_hole=True):
+    """
+    Generate operator contractions for a list of SQOperator.
+    :param ops_list: a list of SecondQuantizedOperator to be contracted
+    :param max_cu: max level of cumulant
+    :param max_n_open: max number of open indices for contractions kept for return
+    :param min_n_open: min number of open indices for contractions kept for return
+    :param expand_hole: expand hole density to Kronecker delta and 1-cumulant if True
+    :return: a map of number of open indices to contractions
+    """
+    # generate elementary contractions
+    elementary_contractions = generate_elementary_contractions(ops_list, max_cu)
+    n_ele_con = len(elementary_contractions)
+
+    # generate incompatible contractions between elementary contractions
+    # the list index of elementary_contractions is saved
+    incompatible_elementary = {i: set() for i in range(n_ele_con)}
+    for i, ele_i in enumerate(elementary_contractions):
+        for j, ele_j in enumerate(elementary_contractions[i + 1:], i + 1):
+            if ele_i.any_overlapped_indices(ele_j):
+                incompatible_elementary[i].add(j)
+                incompatible_elementary[j].add(i)
+
+    # backtracking (similar to generating sub-lists)
+    contractions = []
+    composite_contractions_backtracking(set(range(n_ele_con)), set(), incompatible_elementary, contractions)
+
+    # translate contractions to readable form
+    results = defaultdict(list)
+
+    base_order_indices = Indices([])
+    upper_indices_set, lower_indices_set = set(), set()
+    for sq_op in ops_list:
+        base_order_indices += sq_op.string_form
+        upper_indices_set |= sq_op.cre_ops.indices_set
+        lower_indices_set |= sq_op.ann_ops.indices_set
+
+    # contraction is a list of indices of elementary contractions
+    for contraction in contractions:
+
+        n_sq_ops_open = base_order_indices.size - sum([elementary_contractions[i].size for i in contraction])
+        if min_n_open <= n_sq_ops_open <= max_n_open:
+
+            list_of_densities = []
+            current_order = []
+
+            for ele_con in (elementary_contractions[i] for i in contraction):
+                list_of_densities.append(ele_con)
+
+                left, right = ele_con.upper_indices, ele_con.lower_indices
+                if isinstance(ele_con, HoleDensity):
+                    left, right = right, left
+                current_order += left.indices + right.indices[::-1]
+
+            # expand hole densities to delta - lambda_1
+            sign_densities_pairs = expand_hole_densities(list_of_densities) if expand_hole else [(1, list_of_densities)]
+
+            # sort the open indices
+            open_upper_indices, open_lower_indices = IndicesSpinOrbital([]), IndicesSpinOrbital([])
+            if n_sq_ops_open != 0:
+                contracted_indices_set = set(current_order)
+                open_upper_indices = IndicesSpinOrbital(sorted(upper_indices_set - contracted_indices_set))
+                open_lower_indices = IndicesSpinOrbital(sorted(lower_indices_set - contracted_indices_set))
+                current_order += open_upper_indices.indices + open_lower_indices.indices[::-1]
+            sq_op = SecondQuantizedOperator(IndicesPair(open_upper_indices, open_lower_indices))
+
+            # determine sign and push to results
+            sign = (-1) ** (base_order_indices.count_permutations(Indices(current_order)))
+            for _sign, list_of_densities in sign_densities_pairs:
+                results[n_sq_ops_open].append((sign * _sign, list_of_densities, sq_op))
+
+    return results
+
+
+def composite_contractions_backtracking(available, chosen, incompatible, out):
+    """
+    Generate composite contractions from elementary contractions.
+    :param available: unexplored set of elementary contractions
+    :param chosen: chosen set of elementary contractions
+    :param incompatible: a map to test incompatible elementary contractions
+    :param out: final results from outside
+    :return: viable composite contractions
+    """
+    if len(available) == 0:  # base case, nothing to choose
+        if len(chosen) != 0:
+            out.append(deepcopy(chosen))
+    else:
+        # two choices to explore: with or without the given element
+        temp = available.pop()  # choose
+
+        chosen.add(temp)  # choose to include this element
+        composite_contractions_backtracking(available - incompatible[temp], chosen, incompatible, out)
+
+        chosen.remove(temp)  # choose not to include this element
+        composite_contractions_backtracking(available, chosen, incompatible, out)
+
+        available.add(temp)  # un-choose
+
+
+def expand_hole_densities(list_of_tensors):
+    """
+    Expand all the hole densities in the list_of_tensors.
+    :param list_of_tensors: a list of Tensor objects
+    :return: a list of (sign, expanded Tensor objects)
+    """
+    out = []
+
+    good_tensors, hole_densities = [], []
+    for tensor in list_of_tensors:
+        hole_densities.append(tensor) if isinstance(tensor, HoleDensity) else good_tensors.append(tensor)
+
+    # if hole density contain any virtual index, it can only be delta
+    skip_cumulant = [hole.upper_indices[0].space == 'v' or hole.lower_indices[0].space == 'v'
+                     for hole in hole_densities]
+
+    n_hole = len(hole_densities)
+    if n_hole == 0:
+        out.append((1, list_of_tensors))
+    else:
+        for temp in product(range(2), repeat=n_hole):
+            sign = (-1) ** sum(temp)
+
+            if any([i and j for i, j in zip(temp, skip_cumulant)]):
+                continue
+
+            expanded = []
+            for i, to_cu in enumerate(temp):
+                upper_indices, lower_indices = hole_densities[i].upper_indices, hole_densities[i].lower_indices
+                if temp[i] == 0:
+                    expanded.append(Kronecker(IndicesPair(upper_indices, lower_indices)))
+                else:
+                    expanded.append(Cumulant(IndicesPair(upper_indices, lower_indices)))
+
+            out.append((sign, good_tensors + expanded))
+
+    return out
+
+
 # a = SQOperator(["g0", "g1"], ["g2", "g3"])
 # b = SQOperator(["p0", "p1"], ["h0", "h1"])
 # c = SQOperator(["p2", "p3"], ["h2", "h3"])

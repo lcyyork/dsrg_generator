@@ -7,10 +7,13 @@
 
 #### Design Documentation
 
-*Project Variables*
+*Project Variables, Functions, Classes*
 - `mo_space.py`: MO space info
+- `integer_partition.py`: function to partition an integer
+- `Timer.py`: Timer class grabbed from Stack Overflow
 
-*Classes* 
+
+*Core Classes* 
 - `Index.py`: Index class 
 - `Indices.py`: Indices class
 - `IndicesPair.py`: IndicesPair class

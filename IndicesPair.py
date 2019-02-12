@@ -1,4 +1,3 @@
-from typing import Type
 from Indices import Indices, IndicesSpinOrbital
 
 
@@ -20,7 +19,7 @@ def make_indices_pair(upper_indices, lower_indices, indices_type: str):
 
 
 class IndicesPair:
-    def __init__(self, upper_indices: Type[Indices], lower_indices: Type[Indices]):
+    def __init__(self, upper_indices, lower_indices):
         """
         The IndicesPair class to handle upper and lower indices for tensors or second-quantized operators.
         :param upper_indices: a Indices object for upper indices

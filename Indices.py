@@ -190,7 +190,7 @@ class Indices:
             raise ValueError("Two Indices objects contain common Index, thus cannot be added.")
         self._indices += other.indices
         self._size += other.size
-        self._set = self.indices_set.union(other.indices_set)
+        self._indices_set = self.indices_set.union(other.indices_set)
         return self
 
     def clone(self):
@@ -252,6 +252,15 @@ class Indices:
         :return: the sorted indices and a sign change
         """
         return self.clone(), 1
+
+    def any_overlap(self, other):
+        """
+        Test if there are any overlapped indices between two Indices
+        :param other: the compared Indices object
+        :return: True if find any overlap
+        """
+        self._is_valid_operand(other)
+        return len(self.indices_set & other.indices_set) != 0
 
     def n_multiset_permutation(self):
         """ Return the number of multiset permutations of this Indices object. """

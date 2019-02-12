@@ -159,7 +159,17 @@ class Tensor:
             return False
         else:
             return self.upper_indices.is_permutation(other.upper_indices) and \
-                   self.lower_indices.is_permutation(other.lower_indices)
+                self.lower_indices.is_permutation(other.lower_indices)
+
+    def any_overlapped_indices(self, other):
+        """
+        Test if two Tensor objects have same indices.
+        :param other: the compared Tensor object
+        :return: True if any indices are in common between self and other
+        """
+        self._is_valid_operand(other)
+        return self.upper_indices.any_overlap(other.upper_indices) or \
+            self.lower_indices.any_overlap(other.lower_indices)
 
     def canonicalize(self):
         """

@@ -231,7 +231,7 @@ def expand_hole_densities(list_of_tensors):
     """
     Expand all the hole densities in the list_of_tensors.
     :param list_of_tensors: a list of Tensor objects
-    :return: a list of (sign, expanded Tensor objects)
+    :return: generate tuples of (sign, expanded Tensor objects)
     """
     out = []
 
@@ -261,9 +261,7 @@ def expand_hole_densities(list_of_tensors):
                 else:
                     expanded.append(Cumulant(IndicesPair(upper_indices, lower_indices)))
 
-            out.append((sign, good_tensors + expanded))
-
-    return out
+            yield sign, good_tensors + expanded
 
 
 # a = SQOperator(["g0", "g1"], ["g2", "g3"])

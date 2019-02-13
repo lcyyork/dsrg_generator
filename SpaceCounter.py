@@ -37,7 +37,7 @@ class SpaceCounter:
 
     @staticmethod
     def _is_valid_indices_set(indices_set):
-        if any([isinstance(i, Index) for i in indices_set]):
+        if not all([isinstance(i, Index) for i in indices_set]):
             raise TypeError("Invalid type in indices set.")
 
     def add_upper(self, indices_set):

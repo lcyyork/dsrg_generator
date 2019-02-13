@@ -1,64 +1,82 @@
-from mo_space import space_priority
+from mo_space import space_priority, space_priority_so
+from Index import Index
 
 
 class SpaceCounter:
-    def __init__(self):
+    def __init__(self, spin_orbital=True):
         """
         The space counter to count the MO spaces in a given indices.
+        :param spin_orbital: True if using spin-orbital space_priority
         """
-        self.upper = [0] * len(space_priority)
-        self.lower = [0] * len(space_priority)
-        self.nupper = 0
-        self.nlower = 0
+        self._space_priority = space_priority_so if spin_orbital else space_priority
+        length = len(self._space_priority)
+        self._upper = [0] * length
+        self._lower = [0] * length
+        self._n_upper = 0
+        self._n_lower = 0
 
-    def add(self, indices_set, is_upper):
+    @property
+    def upper(self):
+        return self._upper
+
+    @property
+    def lower(self):
+        return self._lower
+
+    @property
+    def n_upper(self):
+        return self._n_upper
+
+    @property
+    def n_lower(self):
+        return self._n_lower
+
+    @property
+    def size(self):
+        return self.n_upper + self.n_lower
+
+    @staticmethod
+    def _is_valid_indices_set(indices_set):
+        if any([isinstance(i, Index) for i in indices_set]):
+            raise TypeError("Invalid type in indices set.")
+
+    def add_upper(self, indices_set):
         """
-        Add the MO spaces of indices to self.
+        Add the MO spaces of indices to upper set.
         :param indices_set: a set of Index objects
-        :param is_upper: add to self.upper/self.lower if True/False
         """
-        if is_upper:
-            for index in indices_set:
-                self.upper[space_priority.index(index.space)] += 1
-                self.nupper += 1
-        else:
-            for index in indices_set:
-                self.lower[space_priority.index(index.space)] += 1
-                self.nlower += 1
+        self._is_valid_indices_set(indices_set)
+        for index in indices_set:
+            self._upper[self._space_priority[index.space]] += 1
+            self._n_upper += 1
+
+    def add_lower(self, indices_set):
+        """
+        Add the MO spaces of indices to lower set.
+        :param indices_set: a set of Index objects
+        """
+        self._is_valid_indices_set(indices_set)
+        for index in indices_set:
+            self._lower[self._space_priority[index.space]] += 1
+            self._n_lower += 1
 
     def __eq__(self, other):
-        return self.upper == other.upper and self.lower == other.lower
+        return (self.upper, self.lower) == (other.upper, other.lower)
 
     def __ne__(self, other):
-        return self.upper != other.upper or self.lower != other.lower
+        return (self.upper, self.lower) != (other.upper, other.lower)
 
     def __lt__(self, other):
-        total0 = self.nupper + self.nlower
-        total1 = other.nupper + other.nlower
-        if total0 != total1:
-            return total0 < total1
-        if self.upper != other.upper:
-            return self.upper < other.upper
-        if self.lower != other.lower:
-            return self.lower < other.lower
-        return False
+        return (self.size, self.upper, self.lower) < (other.size, other.upper, other.lower)
 
     def __le__(self, other):
-        return self == other or self < other
+        return (self.size, self.upper, self.lower) <= (other.size, other.upper, other.lower)
 
     def __gt__(self, other):
-        total0 = self.nupper + self.nlower
-        total1 = other.nupper + other.nlower
-        if total0 != total1:
-            return total0 > total1
-        if self.upper != other.upper:
-            return self.upper > other.upper
-        if self.lower != other.lower:
-            return self.lower > other.lower
-        return False
+        return (self.size, self.upper, self.lower) > (other.size, other.upper, other.lower)
 
     def __ge__(self, other):
-        return not self < other
+        return (self.size, self.upper, self.lower) >= (other.size, other.upper, other.lower)
 
     def __repr__(self):
-        return "SpaceCounter upper {} lower {}".format(self.upper, self.lower)
+        return f"SpaceCounter ({self.upper}, {self.lower})"

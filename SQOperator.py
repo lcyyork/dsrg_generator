@@ -88,7 +88,11 @@ class SecondQuantizedOperator:
         return self.latex()
 
     def latex(self, dollar=False):
-        """ Return the latex form (a string) of this SQOperator object. """
+        """
+        Translate to latex form.
+        :param dollar: True if use inline math for latex
+        :return: a string of latex format
+        """
         if self.is_empty():
             return ""
         out = f"a{self.indices_pair.latex()}"
@@ -96,9 +100,21 @@ class SecondQuantizedOperator:
             out = "$ " + out + " $"
         return out
 
+    def ambit(self, upper_first=False):
+        """
+        Translate to ambit form.
+        :param upper_first: True if upper indices come in front of lower indices
+        :return: a string of ambit form
+        """
+        return self.indices_pair.ambit(upper_first)
+
     def is_empty(self):
-        """ Return True is this SQOperator is empty. """
+        """ Return True is this object is empty. """
         return self.n_ops == 0
+
+    def is_particle_conserving(self):
+        """ Return True if this object conserves particles. """
+        return self.n_ann == self.n_cre
 
     def exist_permute_format(self):
         """ Return True if there exists a multiset permutation of this object. """

@@ -104,11 +104,16 @@ class IndicesPair:
         """
         return f"^{self.upper_indices.latex()}_{self.lower_indices.latex()}"
 
-    def ambit(self):
+    def ambit(self, upper_first=True):
         """
         The ambit form of IndicesPair
+        :param upper_first: True if put upper indices in front of lower indices
         :return: a string in ambit format
         """
+        if self.is_empty():
+            return ""
+        if not upper_first:
+            return f'["{self.lower_indices.ambit()},{self.upper_indices.ambit()}"]'
         return f'["{self.upper_indices.ambit()},{self.lower_indices.ambit()}"]'
 
     def generate_spin_cases(self, particle_conserving=True):

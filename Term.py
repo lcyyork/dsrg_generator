@@ -127,13 +127,15 @@ class Term:
     @staticmethod
     def format_coeff(value, form=None):
         fraction = Fraction(value).limit_denominator(1000000)
-        if form is None:
-            out = f"{fraction}"
-        else:
+
+        if form == 'ambit':
             if '/' in str(fraction):
                 out = f"{fraction.numerator}.0"
             else:
                 out = f"({fraction.numerator}.0 / {fraction.denominator}.0)"
+        else:
+            out = f"{fraction}"
+
         return out
 
     def latex(self, dollar=False, permute_format=True, delimiter=False, backslash=False):
@@ -147,7 +149,10 @@ class Term:
         """
         tensors_str = " " + " ".join((tensor.latex() for tensor in self.list_of_tensors))
 
-        n_perm, perm_str, sq_op_str = self.sq_op.latex_permute_format() if permute_format else (1, "", self.sq_op.latex())
+        n_perm, perm_str, sq_op_str = 1, "", self.sq_op.latex()
+        if permute_format:
+            n_perm, perm_str, sq_op_str = self.sq_op.latex_permute_format()
+
         coeff_str = self.format_coeff(self.coeff / n_perm)
 
         if delimiter:
@@ -164,7 +169,69 @@ class Term:
             out = "$" + out + "$"
         return out
 
+    def ambit(self, name='C'):
+        """
+        Translate to ambit form, forced to add permutations if found.
+        :param name: output tensor name
+        :return: ambit form (string) of the Term
+        """
+        if not isinstance(name, str):
+            raise TypeError(f"Invalid ambit name, given '{name.__class__.__name__}', required 'str'.")
 
+        factor = factorial(self.sq_op.n_cre) * factorial(self.sq_op.n_ann)
+        n_perm = self.sq_op.n_multiset_permutation()
+        coeff_str = self.format_coeff(self.coeff * factor / n_perm, 'ambit')
+
+        tensors_str = " * ".join((tensor.ambit() for tensor in self.list_of_tensors))
+
+        if not self.sq_op.exist_permute_format():
+            lhs = f"{name}_{self.sq_op.n_ann}_{self.sq_op.n_cre}{self.sq_op.ambit(cre_first=False)}"
+            rhs = coeff_str + tensors_str
+            return lhs + " += " + rhs + ";\n"
+        else:
+            space_str = "".join([i.space for i in self.sq_op.ann_ops] + [i.space for i in self.sq_op.cre_ops])
+            out = f'temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {{"{space_str}"}});\n'
+
+            temp_str = f'temp{self.sq_op.ambit(cre_first=False)} += {coeff_str + tensors_str};\n'
+
+            for sign, lhs_indices in self.sq_op.ambit_permute_format(cre_first=False):
+                lhs = f"{name}_{self.sq_op.n_ann}_{self.sq_op.n_cre}{lhs_indices}"
+                out += f"{lhs} {'+' if sign == 1 else '-'}= {temp_str};\n"
+
+            return out
+
+    def void_self(self):
+        """
+        Make current Term an empty Term.
+        """
+        self._coeff = 0.0
+        self._sq_op = SecondQuantizedOperator(IndicesPair(self.sq_op.type_of_indices([]),
+                                                          self.sq_op.type_of_indices([])))
+        self._indices_set = set()
+        self._list_of_tensors = []
+
+    # def build_adjacency_matrix(self):
+    #     """
+    #     Build the adjacency matrix of the current Term (should be simplified already).
+    #     Since densities cannot be connected among themselves, we only need the non-cumulant tensors.
+    #     :return: the adjacency matrix specified by SpaceCounter
+    #     """
+    #     # number of tensors that are not cumulant
+    #     n_non_cu = sum([not isinstance(i, Cumulant) for i in self.list_of_tensors])
+    #
+    #     # build adjacency matrix
+    #     adjacency_matrix = [[SpaceCounter() for _ in range(self.n_tensors)] for __ in range(n_non_cu)]
+    #
+    #     # TODO: continue form here
+    #     for i, tensor1 in enumerate(list)
+    #         for i in range(noncu):
+    #             tensor1 = self.list_of_tensors[i]
+    #             for j in range(i + 1, ntensors):
+    #                 tensor2 = self.list_of_tensors[j]
+    #                 adjacency_matrix[i][j].add_upper(tensor1.Uindices.set & tensor2.Lindices.set)
+    #                 adjacency_matrix[i][j].add_lower(tensor1.Lindices.set & tensor2.Uindices.set)
+    #
+    #         return adjacency_matrix, (noncu, ntensors)
 
 # class Term:
 #     def __init__(self, list_of_tensors, operator, coeff=1.0, need_to_sort=True):

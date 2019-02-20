@@ -344,6 +344,8 @@ class IndicesAntisymmetric(Indices):
 
     def exist_permute_format(self):
         """ Return True if there is a valid multiset permutation. """
+        if self.size == 0:
+            return False
         space = [i.space for i in self.indices]
         return space.count(space[0]) != self.size
 

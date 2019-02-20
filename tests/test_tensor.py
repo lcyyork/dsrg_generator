@@ -78,7 +78,7 @@ def test_latex():
 
 def test_ambit():
     a = make_tensor_preset("a1,a2", "c3,p0", 'spin-orbital', 'cluster_amplitude')
-    assert a.ambit() == 'T2["a1,a2,c3,p0"]'
+    assert a.ambit() == 'T_2_2["a1,a2,c3,p0"]'
 
 
 def test_is_permutation():

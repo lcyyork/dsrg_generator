@@ -144,9 +144,7 @@ class Tensor:
         return out
 
     def ambit(self):
-        if self.n_lower == self.n_upper:
-            return f"{self.name}{self.n_lower}{self.indices_pair.ambit()}"
-        return f"{self.name}{self.size}{self.indices_pair.ambit()}"
+        return f"{self.name}_{self.n_upper}_{self.n_lower}{self.indices_pair.ambit()}"
 
     def is_permutation(self, other):
         """

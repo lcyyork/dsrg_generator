@@ -100,13 +100,13 @@ class SecondQuantizedOperator:
             out = "$ " + out + " $"
         return out
 
-    def ambit(self, upper_first=False):
+    def ambit(self, cre_first=False):
         """
         Translate to ambit form.
-        :param upper_first: True if upper indices come in front of lower indices
+        :param cre_first: True if creation indices come in front of annihilation indices
         :return: a string of ambit form
         """
-        return self.indices_pair.ambit(upper_first)
+        return self.indices_pair.ambit(cre_first)
 
     def is_empty(self):
         """ Return True is this object is empty. """
@@ -136,22 +136,19 @@ class SecondQuantizedOperator:
         whitespace = ' ' if perm_cre and perm_ann else ''
         return n_perm_cre * n_perm_ann, perm_cre + whitespace + perm_ann, self.latex()
 
-    def ambit_permute_format(self, reverse_cre_ann=False):
+    def ambit_permute_format(self, cre_first=False):
         """
         Generate the multiset-permutation form for ambit.
-        :param reverse_cre_ann: True if ann comes before cre
+        :param cre_first: True if creation operators comes before annihilation operators
         :return: a tuple of (sign, a string representation of operator)
         """
         if self.is_empty():
             yield 1, ''
         else:
-            first, second = (self.ann_ops, self.cre_ops) if reverse_cre_ann else (self.cre_ops, self.ann_ops)
-            print(first, second)
+            first, second = (self.cre_ops, self.ann_ops) if cre_first else (self.ann_ops, self.cre_ops)
             for sign_1, str_1 in first.ambit_permute_format():
-                print(sign_1, str_1)
                 for sign_2, str_2 in second.ambit_permute_format():
-                    print(sign_2, str_2)
-                    yield sign_1 * sign_2, str_1 + ',' + str_2
+                    yield sign_1 * sign_2, f'["{str_1},{str_2}"]'
 
     def generate_spin_cases(self, particle_conserving=True):
         """

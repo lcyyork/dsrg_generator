@@ -102,12 +102,12 @@ def test_ambit_permute_format():
         assert pair == (1, '')
 
     a = make_sqop("g0,g1,c2", "p0,p1,p2", 'spin-integrated')
-    ref = {(1, "p0,p1,p2,g0,g1,c2"), (-1, "p0,p1,p2,g0,c2,g1"), (1, "p0,p1,p2,c2,g0,g1")}
-    for pair in a.ambit_permute_format(reverse_cre_ann=True):
+    ref = {(1, '["p0,p1,p2,g0,g1,c2"]'), (-1, '["p0,p1,p2,g0,c2,g1"]'), (1, '["p0,p1,p2,c2,g0,g1"]')}
+    for pair in a.ambit_permute_format(cre_first=False):
         assert pair in ref
         ref.remove(pair)
     assert len(ref) == 0
 
     a = make_sqop("g0,G1,c2", "p0,p1,P2", 'spin-integrated')
-    for pair in a.ambit_permute_format(reverse_cre_ann=True):
-        assert pair == (1, "p0,p1,P2,g0,G1,c2")
+    for pair in a.ambit_permute_format(cre_first=False):
+        assert pair == (1, '["p0,p1,P2,g0,G1,c2"]')

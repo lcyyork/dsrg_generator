@@ -25,7 +25,7 @@ def make_tensor(name, upper_indices, lower_indices, indices_type, priority=0):
     :return: a Tensor object
     """
     indices_pair = make_indices_pair(upper_indices, lower_indices, indices_type)
-    return Tensor(name, indices_pair, priority)
+    return Tensor(indices_pair, name, priority)
 
 
 class Tensor:
@@ -45,7 +45,7 @@ class Tensor:
             raise KeyError(f"Invalid tensor type '{tensor_type}', not in {', '.join(Tensor.subclasses.keys())}.")
         return cls.subclasses[tensor_type](params)
 
-    def __init__(self, name, indices_pair, priority=0):
+    def __init__(self, indices_pair, name, priority=0):
         """
         The tensor class.
         :param name: the tensor name
@@ -175,9 +175,7 @@ class Tensor:
         :return: a tuple of (tensor with sorted indices, sign)
         """
         indices_pair, sign = self.indices_pair.canonicalize()
-        if self.__class__ in Tensor.subclasses.values():
-            return self.__class__(indices_pair), sign
-        return Tensor(self.name, indices_pair, self.priority), sign
+        return self.__class__(indices_pair, self.name, self.priority), sign
 
     def generate_spin_cases(self, particle_conserving=True):
         """
@@ -185,43 +183,39 @@ class Tensor:
         :param particle_conserving: True if generated indices preserve the spin
         :return: a Tensor object labeled by spin-integrated indices
         """
-        if self.__class__ in Tensor.subclasses.values():
-            for indices_pair in self.indices_pair.generate_spin_cases(particle_conserving):
-                yield self.__class__(indices_pair)
-        else:
-            for indices_pair in self.indices_pair.generate_spin_cases(particle_conserving):
-                yield Tensor(self.name, indices_pair, self.priority)
+        for indices_pair in self.indices_pair.generate_spin_cases(particle_conserving):
+            yield self.__class__(indices_pair, self.name, self.priority)
 
 
 @Tensor.register_subclass('cumulant')
 class Cumulant(Tensor):
-    def __init__(self, indices_pair):
-        Tensor.__init__(self, "L", indices_pair, priority=3)
+    def __init__(self, indices_pair, name='L', priority=2):
+        Tensor.__init__(self, indices_pair, name, priority)
 
 
 @Tensor.register_subclass('hole_density')
 class HoleDensity(Tensor):
-    def __init__(self, indices_pair):
-        Tensor.__init__(self, "C", indices_pair, priority=3)
+    def __init__(self, indices_pair, name='C', priority=2):
+        Tensor.__init__(self, indices_pair, name, priority)
         if self.n_upper != 1 or self.n_lower != 1:
             raise ValueError("Hole density should be of 1 body.")
 
 
 @Tensor.register_subclass('Kronecker')
 class Kronecker(Tensor):
-    def __init__(self, indices_pair):
-        Tensor.__init__(self, "K", indices_pair, priority=2)
+    def __init__(self, indices_pair, name='K', priority=-1):
+        Tensor.__init__(self, indices_pair, name, priority)
         if self.n_upper != 1 or self.n_lower != 1:
             raise ValueError("Kronecker delta should be of 1 body.")
 
 
 @Tensor.register_subclass('cluster_amplitude')
 class ClusterAmplitude(Tensor):
-    def __init__(self, indices_pair):
-        Tensor.__init__(self, "T", indices_pair, priority=1)
+    def __init__(self, indices_pair, name='T', priority=1):
+        Tensor.__init__(self, indices_pair, name, priority)
 
 
 @Tensor.register_subclass('Hamiltonian')
 class Hamiltonian(Tensor):
-    def __init__(self, indices_pair):
-        Tensor.__init__(self, "H", indices_pair, priority=0)
+    def __init__(self, indices_pair, name='H', priority=0):
+        Tensor.__init__(self, indices_pair, name, priority)

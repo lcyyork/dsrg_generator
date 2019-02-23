@@ -9,13 +9,13 @@ from sqop_contraction import expand_hole_densities
 def test_init():
     indices_pair = make_indices_pair("H0, C2", "P1, V4", 'spin-adapted')
     with pytest.raises(TypeError):
-        Tensor(1, indices_pair, 10)  # name is not string
+        Tensor(indices_pair, 1, 10)  # name is not string
     with pytest.raises(TypeError):
-        Tensor("temp", "h0", 10)  # indices is not of IndicesPair
+        Tensor("h0", "temp", 10)  # indices is not of IndicesPair
     with pytest.raises(TypeError):
-        Tensor("temp", indices_pair, 'x')  # priority is not an integer
+        Tensor(indices_pair, "temp", 'x')  # priority is not an integer
 
-    a = Tensor('temp', indices_pair, 10)
+    a = Tensor(indices_pair, 'temp', 10)
     assert a.name == 'temp'
     assert a.indices_pair == make_indices_pair("H0, C2", "P1, V4", 'spin-adapted')
     assert a.priority == 10
@@ -29,7 +29,7 @@ def test_init():
 
 def test_eq():
     a = make_tensor('temp', "a0,a1", "c2,v6", 'spin-orbital', 8)
-    assert a == Tensor('temp', make_indices_pair("a0,a1", "c2,v6", 'spin-orbital'), 8)
+    assert a == Tensor(make_indices_pair("a0,a1", "c2,v6", 'spin-orbital'), 'temp', 8)
 
 
 def test_ne():
@@ -46,8 +46,8 @@ def test_ne():
 
 def test_lt():
     indices_pair = make_indices_pair("C1", "P2", 'spin-integrated')
-    assert Hamiltonian(indices_pair) < ClusterAmplitude(indices_pair) \
-        < Kronecker(indices_pair) < HoleDensity(indices_pair) < Cumulant(indices_pair)
+    assert Kronecker(indices_pair) < Hamiltonian(indices_pair) < ClusterAmplitude(indices_pair) \
+        < HoleDensity(indices_pair) < Cumulant(indices_pair)
     assert ClusterAmplitude(indices_pair) < make_tensor_preset("c1,c2", "v2,v5",
                                                                'spin-integrated', 'cluster_amplitude')
     a = make_tensor_preset("a0,A2", "a3, A1", 'spin-integrated', 'cumulant')

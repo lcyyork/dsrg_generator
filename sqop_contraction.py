@@ -47,7 +47,7 @@ def generate_elementary_contractions(ops_list, max_cu=3):
                     if l.space == 'v':
                         continue
                     if len(space_relation[u.space] & space_relation[l.space]) != 0:
-                        out_list.append(make_tensor_preset([u], [l], 'spin-orbital', 'cumulant'))
+                        out_list.append(make_tensor_preset('cumulant', [u], [l], 'spin-orbital'))
             for l in left.ann_ops:
                 if l.space == 'c':
                     continue
@@ -55,7 +55,7 @@ def generate_elementary_contractions(ops_list, max_cu=3):
                     if u.space == 'c':
                         continue
                     if len(space_relation[u.space] & space_relation[l.space]) != 0:
-                        out_list.append(make_tensor_preset([u], [l], 'spin-orbital', 'hole_density'))
+                        out_list.append(make_tensor_preset('hole_density', [u], [l], 'spin-orbital'))
     if max_cu < 2:
         return out_list
 
@@ -121,7 +121,7 @@ def generate_elementary_contractions(ops_list, max_cu=3):
                     continue
                 else:
                     ann_indices = [ann_ops_list[ann[i][0]][ann[i][1]] for i in range(cu_level)]
-                    out_list.append(make_tensor_preset(cre_indices, ann_indices, 'spin-orbital', 'cumulant'))
+                    out_list.append(make_tensor_preset('cumulant', cre_indices, ann_indices, 'spin-orbital'))
 
     return out_list
 

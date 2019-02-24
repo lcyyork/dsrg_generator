@@ -1,19 +1,30 @@
 from Indices import Indices, IndicesSpinOrbital
 
 
-def make_indices_pair(upper_indices, lower_indices, indices_type: str):
+def make_indices_pair(upper_indices, lower_indices, indices_type=""):
         """
         Initialize a IndicesPair object from upper and lower indices.
         :param upper_indices: a list of Index or string for upper indices
         :param lower_indices: a list of Index or string for lower indices
-        :param indices_type: the type of indices
+        :param indices_type: the type of indices, used if the indices are not Indices
         :return: a IndicesPair object
         """
-        if indices_type not in Indices.subclasses:
-            raise KeyError(f"Invalid indices type {indices_type}. Choices: {', '.join(Indices.subclasses.keys())}.")
+        def test_indices_type():
+            if indices_type not in Indices.subclasses:
+                raise KeyError(f"Invalid indices type {indices_type}."
+                               f" Choices: {', '.join(Indices.subclasses.keys())}.")
 
-        upper = Indices.make_indices(upper_indices, indices_type)
-        lower = Indices.make_indices(lower_indices, indices_type)
+        if isinstance(upper_indices, Indices):
+            upper = upper_indices
+        else:
+            test_indices_type()
+            upper = Indices.make_indices(upper_indices, indices_type)
+
+        if isinstance(lower_indices, Indices):
+            lower = lower_indices
+        else:
+            test_indices_type()
+            lower = Indices.make_indices(lower_indices, indices_type)
 
         return IndicesPair(upper, lower)
 

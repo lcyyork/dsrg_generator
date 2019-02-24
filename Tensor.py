@@ -1,20 +1,20 @@
 from IndicesPair import IndicesPair, make_indices_pair
 
 
-def make_tensor_preset(upper_indices, lower_indices, indices_type, tensor_type):
+def make_tensor_preset(tensor_type, upper_indices, lower_indices, indices_type=""):
     """
     Create a Tensor subclass object from upper and lower indices.
+    :param tensor_type: the preset type of tensor type
     :param upper_indices: a list of Index or string for upper indices
     :param lower_indices: a list of Index or string for lower indices
     :param indices_type: the preset type of indices
-    :param tensor_type: the preset type of tensor type
     :return: a Tensor subclass object
     """
     indices_pair = make_indices_pair(upper_indices, lower_indices, indices_type)
     return Tensor.make_tensor(tensor_type, indices_pair)
 
 
-def make_tensor(name, upper_indices, lower_indices, indices_type, priority=0):
+def make_tensor(name, upper_indices, lower_indices, indices_type="", priority=0):
     """
     Create a Tensor object from upper and lower indices.
     :param name: the name of tensor
@@ -94,6 +94,12 @@ class Tensor:
         return self.indices_pair.n_lower
 
     @property
+    def n_body(self):
+        if self.n_lower != self.n_upper:
+            raise ValueError(f"Invalid quest because n_lower ({self.n_lower}) != n_upper ({self.n_upper}).")
+        return self.n_lower
+
+    @property
     def size(self):
         return self.indices_pair.size
 
@@ -146,6 +152,13 @@ class Tensor:
     def ambit(self):
         return f"{self.name}_{self.n_upper}_{self.n_lower}{self.indices_pair.ambit()}"
 
+    def downgrade_indices(self):
+        """
+        Downgrade the indices of this object.
+        :return: a dictionary of {index: downgraded space}
+        """
+        raise NotImplementedError("Only available for Cumulant, HoleDensity, and Kronecker.")
+
     def is_permutation(self, other):
         """
         Test if two tensors only differ by permutations of indices.
@@ -192,6 +205,13 @@ class Cumulant(Tensor):
     def __init__(self, indices_pair, name='L', priority=2):
         Tensor.__init__(self, indices_pair, name, priority)
 
+    def downgrade_indices(self):
+        """
+        Downgrade indices for Cumulant: 1cu -> hole only, 2cu -> active only.
+        :return: a dictionary of {index: downgraded space}
+        """
+        pass
+
 
 @Tensor.register_subclass('hole_density')
 class HoleDensity(Tensor):
@@ -200,6 +220,13 @@ class HoleDensity(Tensor):
         if self.n_upper != 1 or self.n_lower != 1:
             raise ValueError("Hole density should be of 1 body.")
 
+    def downgrade_indices(self):
+        """
+        Downgrade indices for HoleDensity: particle only.
+        :return: a dictionary of {index: downgraded space}
+        """
+        pass
+
 
 @Tensor.register_subclass('Kronecker')
 class Kronecker(Tensor):
@@ -207,6 +234,13 @@ class Kronecker(Tensor):
         Tensor.__init__(self, indices_pair, name, priority)
         if self.n_upper != 1 or self.n_lower != 1:
             raise ValueError("Kronecker delta should be of 1 body.")
+
+    def downgrade_indices(self):
+        """
+        Downgrade indices for Kronecker: (hole, particle) -> active, high priority -> low priority.
+        :return: a dictionary of {index: downgraded space}
+        """
+        pass
 
 
 @Tensor.register_subclass('cluster_amplitude')

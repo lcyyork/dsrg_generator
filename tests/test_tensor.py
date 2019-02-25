@@ -3,6 +3,7 @@ from Tensor import make_tensor_preset, make_tensor
 from Tensor import Tensor, HoleDensity, Cumulant, Kronecker, ClusterAmplitude, Hamiltonian
 from IndicesPair import make_indices_pair
 from Indices import IndicesSpinAdapted, IndicesSpinIntegrated
+from Index import Index
 from sqop_contraction import expand_hole_densities
 
 
@@ -152,3 +153,75 @@ def test_expand_hole():
         assert sign_tensors in ref
         count += 1
     assert count == 4
+
+
+def test_downgrade_indices():
+    for tensor_type in ['cluster_amplitude', 'Hamiltonian']:
+        a = make_tensor_preset(tensor_type, 'P1', 'H3', 'spin-adapted')
+        with pytest.raises(NotImplementedError):
+            a.downgrade_indices()
+
+    a = make_tensor_preset('Kronecker', 'P1', 'H3', 'spin-integrated')
+    assert a.downgrade_indices() == 'A'
+
+    a = make_tensor_preset('Kronecker', 'V1', 'C3', 'spin-integrated')
+    assert a.downgrade_indices() == ''
+
+    a = make_tensor_preset('Kronecker', 'G1', 'H3', 'spin-integrated')
+    assert a.downgrade_indices() == 'H'
+
+    a = make_tensor_preset('cumulant', 'G0,c2,p2', 'v2,H4,a1', 'spin-integrated')
+    with pytest.raises(NotImplementedError):
+        a.downgrade_indices()
+
+    space_pair = {('c', 'c'): 'c',
+                  ('c', 'a'): '',
+                  ('c', 'v'): '',
+                  ('c', 'h'): 'c',
+                  ('c', 'p'): '',
+                  ('c', 'g'): 'c',
+                  ('a', 'a'): 'a',
+                  ('a', 'v'): '',
+                  ('a', 'h'): 'a',
+                  ('a', 'p'): 'a',
+                  ('a', 'g'): 'a',
+                  ('v', 'v'): '',
+                  ('v', 'h'): '',
+                  ('v', 'p'): '',
+                  ('v', 'g'): '',
+                  ('h', 'h'): 'h',
+                  ('h', 'p'): 'a',
+                  ('h', 'g'): 'h',
+                  ('p', 'p'): 'a',
+                  ('p', 'g'): 'a',
+                  ('g', 'g'): 'h'}
+    for spaces, value in space_pair.items():
+        index0, index1 = (f"{i}{j}" for i, j in zip(spaces, range(2)))
+        a = make_tensor_preset('cumulant', index0, index1, 'spin-orbital')
+        assert a.downgrade_indices() == value
+
+    space_pair = {('C', 'C'): '',
+                  ('C', 'A'): '',
+                  ('C', 'V'): '',
+                  ('C', 'H'): '',
+                  ('C', 'P'): '',
+                  ('C', 'G'): '',
+                  ('A', 'A'): 'A',
+                  ('A', 'V'): '',
+                  ('A', 'H'): 'A',
+                  ('A', 'P'): 'A',
+                  ('A', 'G'): 'A',
+                  ('V', 'V'): 'V',
+                  ('V', 'H'): '',
+                  ('V', 'P'): 'V',
+                  ('V', 'G'): 'V',
+                  ('H', 'H'): 'A',
+                  ('H', 'P'): 'A',
+                  ('H', 'G'): 'A',
+                  ('P', 'P'): 'P',
+                  ('P', 'G'): 'P',
+                  ('G', 'G'): 'P'}
+    for spaces, value in space_pair.items():
+        index0, index1 = (f"{i}{j}" for i, j in zip(spaces, range(2)))
+        a = make_tensor_preset('hole_density', index0, index1, 'spin-integrated')
+        assert a.downgrade_indices() == value

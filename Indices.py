@@ -301,7 +301,7 @@ class Indices:
         return self.spin_count[0]
 
     def n_beta(self):
-        return self.spin_count[1]
+        return sum([i.is_beta() for i in self.indices])
 
     def generate_spin_cases(self, n_beta=None):
         """
@@ -407,7 +407,7 @@ class IndicesSpinOrbital(IndicesAntisymmetric):
         """
         if n_beta is None:
             for spins in product(range(2), repeat=self.size):
-                indices = list(map(lambda idx, s: idx if not s else idx.to_beta(), self.indices, spins))
+                indices = list(map(lambda i, s: i if not s else i.to_beta(), self.indices, spins))
                 yield IndicesSpinIntegrated(indices)
         else:
             if not isinstance(n_beta, int):

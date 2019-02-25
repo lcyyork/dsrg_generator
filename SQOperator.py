@@ -116,6 +116,12 @@ class SecondQuantizedOperator:
         """ Return True if this object conserves particles. """
         return self.n_ann == self.n_cre
 
+    def is_spin_conserving(self):
+        """ Return True if conserves spin Ms. """
+        if self.n_cre == self.n_ann:
+            return self.cre_ops.n_beta() == self.ann_ops.n_beta()
+        raise ValueError(f"Invalid quest, n_cre ({self.n_cre}) != n_ann ({self.n_ann}).")
+
     def exist_permute_format(self):
         """ Return True if there exists a multiset permutation of this object. """
         return self.cre_ops.exist_permute_format() or self.ann_ops.exist_permute_format()

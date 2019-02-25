@@ -1,3 +1,4 @@
+from mo_space import  space_priority, space_relation
 from IndicesPair import IndicesPair, make_indices_pair
 
 
@@ -155,9 +156,15 @@ class Tensor:
     def downgrade_indices(self):
         """
         Downgrade the indices of this object.
-        :return: a dictionary of {index: downgraded space}
+        :return: the largest space label of possible downgrades
         """
         raise NotImplementedError("Only available for Cumulant, HoleDensity, and Kronecker.")
+
+    def is_spin_conserving(self):
+        """ Return True if spin Ms is preserved. """
+        if self.n_upper == self.n_lower:
+            return self.upper_indices.n_beta() == self.lower_indices.n_beta()
+        raise ValueError(f"Invalid quest, n_upper ({self.n_upper}) != n_lower ({self.n_lower}).")
 
     def is_permutation(self, other):
         """
@@ -204,13 +211,34 @@ class Tensor:
 class Cumulant(Tensor):
     def __init__(self, indices_pair, name='L', priority=2):
         Tensor.__init__(self, indices_pair, name, priority)
+        if not self.is_spin_conserving():
+            raise ValueError("Cumulant should conserve spin Ms.")
 
     def downgrade_indices(self):
         """
         Downgrade indices for Cumulant: 1cu -> hole only, 2cu -> active only.
-        :return: a dictionary of {index: downgraded space}
+        :return: the largest space label of possible downgrades
         """
-        pass
+        if self.n_body != 1:
+            raise NotImplementedError("Indices of higher-order cumulant should be all active."
+                                      " No point to implement downgrade_indices here.")
+        else:
+            u_index, l_index = self.upper_indices[0], self.lower_indices[0]
+            overlap = space_relation[u_index.space] & space_relation[l_index.space]
+            n_overlap = len(overlap)
+
+            if n_overlap == 1:
+                overlap_space = next(iter(overlap))
+                if overlap_space.lower() != 'v':
+                    return overlap_space
+            elif n_overlap > 1:
+                hole_label = 'H' if u_index.is_beta() else 'h'
+                if space_relation[hole_label] <= overlap:
+                    return hole_label
+                else:
+                    return 'A' if u_index.is_beta() else 'a'
+
+        return ''
 
 
 @Tensor.register_subclass('hole_density')
@@ -219,13 +247,30 @@ class HoleDensity(Tensor):
         Tensor.__init__(self, indices_pair, name, priority)
         if self.n_upper != 1 or self.n_lower != 1:
             raise ValueError("Hole density should be of 1 body.")
+        if not self.is_spin_conserving():
+            raise ValueError("HoleDensity should converse spin Ms.")
 
     def downgrade_indices(self):
         """
         Downgrade indices for HoleDensity: particle only.
-        :return: a dictionary of {index: downgraded space}
+        :return: the largest space label of possible downgrades
         """
-        pass
+        u_index, l_index = self.upper_indices[0], self.lower_indices[0]
+        overlap = space_relation[u_index.space] & space_relation[l_index.space]
+        n_overlap = len(overlap)
+
+        if n_overlap == 1:
+            overlap_space = next(iter(overlap))
+            if overlap_space.lower() != 'c':
+                return overlap_space
+        elif n_overlap > 1:
+            particle_label = 'P' if u_index.is_beta() else 'p'
+            if space_relation[particle_label] <= overlap:
+                return particle_label
+            else:
+                return 'A' if u_index.is_beta() else 'a'
+
+        return ''
 
 
 @Tensor.register_subclass('Kronecker')
@@ -234,22 +279,36 @@ class Kronecker(Tensor):
         Tensor.__init__(self, indices_pair, name, priority)
         if self.n_upper != 1 or self.n_lower != 1:
             raise ValueError("Kronecker delta should be of 1 body.")
+        if not self.is_spin_conserving():
+            raise ValueError("Kronecker should converse spin Ms.")
 
     def downgrade_indices(self):
         """
         Downgrade indices for Kronecker: (hole, particle) -> active, high priority -> low priority.
-        :return: a dictionary of {index: downgraded space}
+        :return: the largest space label of possible downgrades
         """
-        pass
+        high, low = sorted([self.upper_indices[0], self.lower_indices[0]])
+
+        if len(space_relation[high.space] & space_relation[low.space]) == 0:
+            return ''
+
+        if (high.space.lower(), low.space.lower()) == ('p', 'h'):
+            return 'A' if high.is_beta() else 'a'
+        else:
+            return low.space
 
 
 @Tensor.register_subclass('cluster_amplitude')
 class ClusterAmplitude(Tensor):
     def __init__(self, indices_pair, name='T', priority=1):
         Tensor.__init__(self, indices_pair, name, priority)
+        if not self.is_spin_conserving():
+            raise ValueError("ClusterAmplitude should converse spin Ms.")
 
 
 @Tensor.register_subclass('Hamiltonian')
 class Hamiltonian(Tensor):
     def __init__(self, indices_pair, name='H', priority=0):
         Tensor.__init__(self, indices_pair, name, priority)
+        if not self.is_spin_conserving():
+            raise ValueError("Hamiltonian should converse spin Ms.")

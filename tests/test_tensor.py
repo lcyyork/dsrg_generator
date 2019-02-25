@@ -225,3 +225,13 @@ def test_downgrade_indices():
         index0, index1 = (f"{i}{j}" for i, j in zip(spaces, range(2)))
         a = make_tensor_preset('hole_density', index0, index1, 'spin-integrated')
         assert a.downgrade_indices() == value
+
+def test_is_all_active():
+    a = make_tensor_preset('cluster_amplitude', "a1,a2", "p0,v1", 'spin-orbital')
+    assert not a.is_all_active()
+
+    a = make_tensor_preset('cluster_amplitude', "a1,a2", "a3,a4", 'spin-orbital')
+    assert a.is_all_active()
+
+    a = make_tensor_preset('cluster_amplitude', "a1,a2,A0", "a3,a4,A1", 'spin-integrated')
+    assert a.is_all_active()

@@ -1,4 +1,4 @@
-from mo_space import  space_priority, space_relation
+from mo_space import space_relation
 from IndicesPair import IndicesPair, make_indices_pair
 
 
@@ -159,6 +159,11 @@ class Tensor:
         :return: the largest space label of possible downgrades
         """
         raise NotImplementedError("Only available for Cumulant, HoleDensity, and Kronecker.")
+
+    def is_all_active(self):
+        """ Return True if this Tensor contains only active indices. """
+        return (self.upper_indices.count_index_space(['A', 'a']),
+                self.lower_indices.count_index_space(['A', 'a'])) == (self.n_upper, self.n_lower)
 
     def is_spin_conserving(self):
         """ Return True if spin Ms is preserved. """

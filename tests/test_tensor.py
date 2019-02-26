@@ -3,7 +3,6 @@ from Tensor import make_tensor_preset, make_tensor
 from Tensor import Tensor, HoleDensity, Cumulant, Kronecker, ClusterAmplitude, Hamiltonian
 from IndicesPair import make_indices_pair
 from Indices import IndicesSpinAdapted, IndicesSpinIntegrated
-from Index import Index
 from sqop_contraction import expand_hole_densities
 
 
@@ -225,6 +224,7 @@ def test_downgrade_indices():
         index0, index1 = (f"{i}{j}" for i, j in zip(spaces, range(2)))
         a = make_tensor_preset('hole_density', index0, index1, 'spin-integrated')
         assert a.downgrade_indices() == value
+
 
 def test_is_all_active():
     a = make_tensor_preset('cluster_amplitude', "a1,a2", "p0,v1", 'spin-orbital')

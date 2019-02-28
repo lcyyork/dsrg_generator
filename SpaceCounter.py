@@ -1,5 +1,4 @@
 from mo_space import space_priority, space_priority_so
-from Index import Index
 from Indices import IndicesSpinOrbital
 from Tensor import Tensor
 
@@ -58,8 +57,10 @@ class SpaceCounter:
         return self.n_upper + self.n_lower
 
     def _is_valid_operand(self, other):
-        if self.__class__ is not other.__class__:
-            raise TypeError(f"Cannot compare between '{self.__class__.__name__}' and '{other.__class__.__name__}'.")
+        if other.__class__ is not SpaceCounter:
+            raise TypeError(f"Cannot compare between '{other.__class__.__name__}' and 'SpaceCounter'.")
+        if len(self.upper) != len(other.upper):
+            raise ValueError(f"Two SpaceCounter objects assume different indices type.")
 
     def __eq__(self, other):
         self._is_valid_operand(other)

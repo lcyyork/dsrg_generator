@@ -1,6 +1,7 @@
 from mo_space import space_priority, space_priority_so
 from Indices import IndicesSpinOrbital
 from Tensor import Tensor
+from SQOperator import SecondQuantizedOperator
 
 
 class SpaceCounter:
@@ -10,10 +11,10 @@ class SpaceCounter:
         :param tensor1: the 1st Tensor
         :param tensor2: the 2nd Tensor
         """
-        if not isinstance(tensor1, Tensor):
+        if not isinstance(tensor1, (Tensor, SecondQuantizedOperator)):
             raise TypeError(f"Invalid input for tensor1, given '{tensor1.__class__.__name__}',"
                             f" required 'Tensor'.")
-        if not isinstance(tensor2, Tensor):
+        if not isinstance(tensor2, (Tensor, SecondQuantizedOperator)):
             raise TypeError(f"Invalid input for tensor2, given '{tensor2.__class__.__name__}',"
                             f" required 'Tensor'.")
         if tensor1.type_of_indices is not tensor2.type_of_indices:

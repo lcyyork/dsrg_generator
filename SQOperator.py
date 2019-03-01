@@ -36,6 +36,14 @@ class SecondQuantizedOperator:
         return self.indices_pair.lower_indices
 
     @property
+    def upper_indices(self):
+        return self.indices_pair.upper_indices
+
+    @property
+    def lower_indices(self):
+        return self.indices_pair.lower_indices
+
+    @property
     def n_cre(self):
         return self.indices_pair.n_upper
 

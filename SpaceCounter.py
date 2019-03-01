@@ -1,3 +1,4 @@
+from copy import deepcopy
 from mo_space import space_priority, space_priority_so
 from Indices import IndicesSpinOrbital
 from Tensor import Tensor
@@ -89,3 +90,9 @@ class SpaceCounter:
 
     def __repr__(self):
         return f"SpaceCounter ({','.join(map(str, self.upper))}; {','.join(map(str, self.lower))})"
+
+    def transpose(self):
+        out = deepcopy(self)
+        out._upper, out._lower = out._lower, out._upper
+        out._n_upper, out._n_lower = out._n_lower, out._n_upper
+        return out

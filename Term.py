@@ -7,7 +7,7 @@ from mo_space import  space_priority, space_relation, space_priority_so, space_r
 from Index import Index
 from Indices import Indices, IndicesSpinOrbital
 from IndicesPair import IndicesPair
-from Tensor import Tensor, Cumulant, Hamiltonian, ClusterAmplitude, Kronecker, make_tensor_preset
+from Tensor import Tensor, Cumulant, Hamiltonian, ClusterAmplitude, Kronecker, HoleDensity, make_tensor_preset
 from SQOperator import SecondQuantizedOperator, make_sqop
 from SpaceCounter import SpaceCounter
 
@@ -375,7 +375,8 @@ class Term:
         if remove_active_amplitudes:
             for tensor in list_of_tensors:
                 if isinstance(tensor, ClusterAmplitude):
-                    space = set([replacement[i].space for i in tensor.upper_indices]) | set([replacement[i].space for i in tensor.lower_indices])
+                    space = set([replacement[i].space for i in tensor.upper_indices]).union(
+                        set([replacement[i].space for i in tensor.lower_indices]))
                     if len(space) == 1 and (next(iter(space)) in ('a', 'A')):
                         self.void_self()
                         return
@@ -389,28 +390,107 @@ class Term:
         self._indices_set = set(replacement.values())
         self._n_tensors = len(self._list_of_tensors)
 
-    # def build_adjacency_matrix(self):
-    #     """
-    #     Build the adjacency matrix of the current Term (should be simplified already).
-    #     Since densities cannot be connected among themselves, we only need the non-cumulant tensors.
-    #     :return: the adjacency matrix specified by SpaceCounter
-    #     """
-    #     # number of tensors that are not cumulant
-    #     n_non_cu = sum([not isinstance(i, Cumulant) for i in self.list_of_tensors])
-    #
-    #     # build adjacency matrix
-    #     adjacency_matrix = [[SpaceCounter() for _ in range(self.n_tensors)] for __ in range(n_non_cu)]
-    #
-    #     # TODO: continue form here
-    #     for i, tensor1 in enumerate(list)
-    #         for i in range(noncu):
-    #             tensor1 = self.list_of_tensors[i]
-    #             for j in range(i + 1, ntensors):
-    #                 tensor2 = self.list_of_tensors[j]
-    #                 adjacency_matrix[i][j].add_upper(tensor1.Uindices.set & tensor2.Lindices.set)
-    #                 adjacency_matrix[i][j].add_lower(tensor1.Lindices.set & tensor2.Uindices.set)
-    #
-    #         return adjacency_matrix, (noncu, ntensors)
+    def build_adjacency_matrix(self, ignore_cumulant=True):
+        """
+        Build the adjacency matrix (upper triangle) of the current Term.
+        For example, Term = 1.0 * H * T1 * T2 * L1 * L2 * L3 * SqOp
+                   H         T1          T2          L1          L2          L3          SqOp
+        -------------------------------------------------------------------------------------
+        H       None  SC(H, T1)   SC(H, T2)   SC(H, L1)   SC(H, L2)   SC(H, L3)   SC(H, SqOp)
+        T1      None       None  SC(T1, T2)  SC(T1, L1)  SC(T1, L2)  SC(T1, L3)  SC(T1, SqOp)
+        T2      None       None        None  SC(T2, L1)  SC(T2, L2)  SC(T2, L3)  SC(T2, SqOp)
+        L1      None       None        None        None  SC(L1, L2)  SC(L1, L3)          None
+        L2      None       None        None        None        None  SC(L2, L3)          None
+        L3      None       None        None        None        None        None          None
+        SqOp    None       None        None        None        None        None          None
+
+        :param ignore_cumulant: ignore building elements between cumulants, hole densities, or Kronecker deltas
+        :return: the adjacency matrix specified by SpaceCounter
+        """
+        adjacency_matrix: List[List[SpaceCounter]] = [[None for _ in range(self.n_tensors + 1)]
+                                                      for __ in range(self.n_tensors + 1)]
+
+        for i1, tensor1 in enumerate(self.list_of_tensors):
+            is_cumulant1 = True if isinstance(tensor1, (Cumulant, HoleDensity, Kronecker)) else False
+            for i2, tensor2 in enumerate(self.list_of_tensors[i1 + 1:] + [self.sq_op], i1 + 1):
+                if is_cumulant1:
+                    if ignore_cumulant and isinstance(tensor2, (Cumulant, HoleDensity, Kronecker)):
+                        continue
+                    if isinstance(tensor2, SecondQuantizedOperator):
+                        continue
+                adjacency_matrix[i1][i2] = SpaceCounter(tensor1, tensor2)
+
+        return adjacency_matrix
+
+    def similar(self, other):
+        self._is_valid_operand(other)
+        return self.build_adjacency_matrix == other.build_adjacency_matrix
+
+    def almost_similar(self, other):
+        self._is_valid_operand(other)
+        return self.order_tensors() == other.order_tensors()
+
+    def order_tensors(self, simplified=True):
+        """
+        Order tensors in place (after simplified) according to adjacency matrix.
+        :param simplified: True if this Term is simplified already
+        :return: the adjacency matrix of the ordered list of tensors
+        """
+        if not simplified:
+            self.simplify()
+
+        n_tensors = self.n_tensors
+        ordered_tensors: List[Tensor] = [None for _ in range(n_tensors)]
+
+        # build adjacency matrix of the current term
+        adj_mat = self.build_adjacency_matrix()
+        adj_mat_copy = deepcopy(adj_mat)
+
+        # figure out possible equivalent tensors with same name, n_upper, n_lower
+        equivalent_tensors = defaultdict(list)
+        n_non_cu = None
+        for i, tensor in enumerate(self.list_of_tensors):
+            equivalent_tensors[f"{tensor.name}_{tensor.n_upper}_{tensor.n_lower}"].append(i)
+            if n_non_cu is None and isinstance(tensor, Cumulant):
+                n_non_cu = i
+
+        # make sure we fix ordering of amplitudes first, then cumulants
+        for i_tensors in sorted(equivalent_tensors.values(), key=lambda i: (self.list_of_tensors[i[0]].priority,
+                                                                            self.list_of_tensors[i[0]].n_upper,
+                                                                            self.list_of_tensors[i[0]].n_lower)):
+            if len(i_tensors) == 1:
+                ordered_tensors[i_tensors[0]] = self.list_of_tensors[i_tensors[0]]
+            else:
+                if 0 in i_tensors:
+                    raise NotImplementedError("Not considered this situation. Must have only one Hamiltonian.")
+                    # max_i = max(i_tensors)
+                    # ordered = sorted(i_tensors, key=lambda i: [adj_mat[i][n_tensors]] + sorted(adj_mat[i][max_i:-1]))
+                    # for i, j in zip(i_tensor, ordered):
+                    #     ordered_tensors[i] = self.list_of_tensors[j]
+                    #     adj_mat[i] = adj_mat_copy[j]
+                    # adj_mat_copy = deepcopy(adj_mat)
+
+                if isinstance(self.list_of_tensors[i_tensors[0]], ClusterAmplitude):
+                    ordered = sorted(i_tensors, key=lambda i: [adj_mat[i][n_tensors],
+                                                               adj_mat[0][i]] + sorted(adj_mat[i][n_non_cu:]))
+                    for i, j in zip(i_tensor, ordered):
+                        ordered_tensors[i] = self.list_of_tensors[j]
+                        adj_mat[i] = adj_mat_copy[j]
+                    adj_mat_copy = deepcopy(adj_mat)
+
+                if isinstance(self.list_of_tensors[i_tensors[0]], Cumulant):
+                    ordered = sorted(tensors, key=lambda j: [adj_mat[i][j] for i in range(n_non_cu)])
+                    for i, j in zip(i_tensor, ordered):
+                        ordered_tensors[i] = self.list_of_tensors[j]
+                        for k in range(n_non_cu):
+                            adj_mat[k][i] = adj_mat_copy[k][j]
+
+        self._list_of_tensors = ordered_tensors
+        self._sorted = False
+
+        return adj_mat
+
+    # TODO: canonicalize, generate_spin_cases, relabel_indices, minimal_indices
 
 # class Term:
 #     def __init__(self, list_of_tensors, operator, coeff=1.0, need_to_sort=True):

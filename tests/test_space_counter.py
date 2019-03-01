@@ -69,3 +69,10 @@ def test_le():
 
     t3 = make_tensor_preset('cumulant', "c0,h2", "p0,p1", 'spin-orbital')
     assert SpaceCounter(t1, t3) <= SpaceCounter(t1, t2)
+
+
+def test_transpose():
+    tensor1 = make_tensor_preset('Hamiltonian', "p0,P1", "h0,H1", "spin-integrated")
+    tensor2 = make_tensor_preset("cluster_amplitude", "h0, H1", "p0,A0", "spin-integrated")
+    sc = SpaceCounter(tensor1, tensor2)
+    assert sc.transpose() == SpaceCounter(tensor2, tensor1)

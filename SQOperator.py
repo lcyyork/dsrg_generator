@@ -172,3 +172,11 @@ class SecondQuantizedOperator:
         """
         for indices_pair in self.indices_pair.generate_spin_cases(particle_conserving):
             yield SecondQuantizedOperator(indices_pair)
+
+    def canonicalize(self):
+        """
+        Sort the indices to canonical order.
+        :return: a tuple of (sorted SecondQuantizedOperator, sign change)
+        """
+        indices_pair, sign = self.indices_pair.canonicalize()
+        return SecondQuantizedOperator(indices_pair), sign

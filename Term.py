@@ -1,6 +1,7 @@
 from copy import deepcopy
 from collections import defaultdict
 from fractions import Fraction
+from itertools import product
 from math import factorial
 from typing import List
 from mo_space import  space_priority, space_relation, space_priority_so, space_relation_so
@@ -53,9 +54,9 @@ class Term:
             n_lower += tensor.n_lower
 
         if upper_indices != lower_indices:
-            print(f"Upper indices: {upper_indices}")
-            print(f"Lower indices: {lower_indices}")
-            raise ValueError("Invalid Term because it is not connected.")
+            raise ValueError(f"Invalid Term because it is not connected.\n"
+                             f"Upper indices: {upper_indices}\n"
+                             f"Lower indices: {lower_indices}")
 
         if len(upper_indices) != n_upper or len(lower_indices) != n_lower:
             raise ValueError("Invalid Term because repeated indices are found among different Tensors.")
@@ -74,6 +75,15 @@ class Term:
     @property
     def coeff(self):
         return self._coeff
+
+    @coeff.setter
+    def coeff(self, value):
+        try:
+            v = float(value)
+        except:
+            raise ValueError(f"Invalid Term::coeff, given {value} ('{value.__class__.__name__}'),"
+                             f" required 'float'.")
+        self._coeff = v
 
     @property
     def sq_op(self):
@@ -256,6 +266,18 @@ class Term:
             indices_pair = IndicesPair(upper_indices, lower_indices)
             list_of_tensors.append(tensor.__class__(indices_pair, tensor.name, tensor.priority))
         return list_of_tensors
+
+    @staticmethod
+    def _replace_sqop_indices(input_sqop, replacement):
+        """
+        Replace indices of second quantized operator according to replacement map.
+        :param input_sqop: a SecondQuantizedOperator object
+        :param replacement: a replacement map for indices
+        :return: a SecondQuantizedOperator object with replaced indices
+        """
+        upper_indices = input_sqop.type_of_indices([replacement[i] for i in input_sqop.cre_ops])
+        lower_indices = input_sqop.type_of_indices([replacement[i] for i in input_sqop.ann_ops])
+        return SecondQuantizedOperator(IndicesPair(upper_indices, lower_indices))
 
     def _remove_kronecker_delta(self):
         """
@@ -473,14 +495,14 @@ class Term:
                 if isinstance(self.list_of_tensors[i_tensors[0]], ClusterAmplitude):
                     ordered = sorted(i_tensors, key=lambda i: [adj_mat[i][n_tensors],
                                                                adj_mat[0][i]] + sorted(adj_mat[i][n_non_cu:]))
-                    for i, j in zip(i_tensor, ordered):
+                    for i, j in zip(i_tensors, ordered):
                         ordered_tensors[i] = self.list_of_tensors[j]
                         adj_mat[i] = adj_mat_copy[j]
                     adj_mat_copy = deepcopy(adj_mat)
 
                 if isinstance(self.list_of_tensors[i_tensors[0]], Cumulant):
-                    ordered = sorted(tensors, key=lambda j: [adj_mat[i][j] for i in range(n_non_cu)])
-                    for i, j in zip(i_tensor, ordered):
+                    ordered = sorted(i_tensors, key=lambda j: [adj_mat[i][j] for i in range(n_non_cu)])
+                    for i, j in zip(i_tensors, ordered):
                         ordered_tensors[i] = self.list_of_tensors[j]
                         for k in range(n_non_cu):
                             adj_mat[k][i] = adj_mat_copy[k][j]
@@ -490,7 +512,98 @@ class Term:
 
         return adj_mat
 
-    # TODO: canonicalize, generate_spin_cases, relabel_indices, minimal_indices
+    def _minimal_indices(self):
+        """
+        Create a replacement map using minimal index labels to relabel the current term.
+        :return: a replacement map {old index label: new index label}
+        """
+        replacement = dict()
+        next_index_number = {i: 0 for i in self.next_index_number.keys()}
+        n_indices = len(self.indices_set)
+        for tensor in [self.sq_op] + self.list_of_tensors:
+            for upper in tensor.upper_indices:
+                if upper in replacement:
+                    continue
+                replacement[upper] = self._generate_next_index(upper.space, next_index_number)
+            for lower in tensor.lower_indices:
+                if lower in replacement:
+                    continue
+                replacement[lower] = self._generate_next_index(lower.space, next_index_number)
+            if len(replacement.keys()) == n_indices:
+                break
+
+        return replacement
+
+    def canonicalize_simple(self):
+        """
+        Relabel the term using minimal index labels and reorder indices.
+        :return: the relabeled term
+        """
+        replacement = self._minimal_indices()
+
+        sign = 1.0
+
+        sq_op = self._replace_sqop_indices(self.sq_op, replacement)
+        sq_op, _sign = sq_op.canonicalize()
+        sign *= _sign
+
+        list_of_tensors = self._replace_tensors_indices(self.list_of_tensors, replacement)
+        for i, tensor in enumerate(list_of_tensors):
+            list_of_tensors[i], _sign = tensor.canonicalize()
+            sign *= _sign
+
+        return Term(list_of_tensors, sq_op, self.coeff * sign)
+
+    def canonicalize(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
+        """
+        Bring the current term to canonical form, which is defined by a sequence of ordering:
+        1. order tensor by connection to Hamiltonian
+        2. relabel indices
+        :param simplify_core_cumulant: change a cumulant labeled by core indices to a Kronecker delta
+        :param remove_active_amplitudes: remove terms when its contains all-active amplitudes
+        :return: the "canonical" form of this term
+        """
+        # remove Kronecker delta, remove active amplitudes, simplify cumulant indices
+        self.simplify(simplify_core_cumulant, remove_active_amplitudes)
+
+        # order tensors according to adjacency matrix
+        self.order_tensors(simplified=True)
+
+        # relabel indices
+        return self.canonicalize_simple()
+
+    def generate_spin_cases_naive(self):
+        """
+        Generate a list of spin-integrated Term objects.
+        :return: a list of spin-integrated Terms
+        """
+        if self.sq_op.type_of_indices is not IndicesSpinOrbital:
+            raise TypeError(f"Invalid indices, expected 'IndicesSpinOrbital', given '{self.sq_op.type_of_indices}'.")
+
+        terms = []
+
+        for pairs in product(self.sq_op.generate_spin_cases(),
+                             *[i.generate_spin_cases() for i in self.list_of_tensors]):
+            try:
+                sq_op = pairs[0]
+                list_of_tensors = list(pairs[1:])
+                terms.append(Term(list_of_tensors, sq_op, self.coeff, need_to_sort=False).canonicalize())
+            except ValueError:
+                pass
+
+        if len(terms) == 0:
+            return terms
+        else:
+            terms = sorted(terms)
+
+        out = [terms[0]]
+        for term in terms[1:]:
+            if term.almost_equal(out[-1]):
+                out[-1].coeff += term.coeff
+            else:
+                out.append(term)
+
+        return out
 
 # class Term:
 #     def __init__(self, list_of_tensors, operator, coeff=1.0, need_to_sort=True):

@@ -4,11 +4,12 @@ from itertools import combinations, product
 from math import factorial
 from sympy.utilities.iterables import multiset_permutations
 from integer_partition import integer_partition
-from Index import space_relation
+from mo_space import space_relation
 from Indices import Indices
-from SQOperator import make_sqop
+from SQOperator import make_sqop, SecondQuantizedOperator
 from Tensor import make_tensor_preset
-from Term import Term, read_latex_term
+from Term import Term
+from sqop_contraction import generate_operator_contractions
 from Timer import Timer
 
 
@@ -23,16 +24,60 @@ def Hamiltonian_operator(k, start=0, indices_type='spin-orbital'):
     return Term([tensor], sq_op, 1.0 / coeff)
 
 
-def cluster_operator(k, start=0, deexcitation=False, hole_label='h', particle_label='p', indices_type='spin-orbital'):
+def cluster_operator(k, start=0, de_excitation=False, hole_label='h', particle_label='p', indices_type='spin-orbital'):
     coeff = factorial(k) ** 2
     r0, r1 = start, start + k
     hole = [f"{hole_label}{i}" for i in range(r0, r1)]
     particle = [f"{particle_label}{i}" for i in range(r0, r1)]
-    first = hole if deexcitation else particle
-    second = particle if deexcitation else hole
+    first = hole if de_excitation else particle
+    second = particle if de_excitation else hole
     tensor = make_tensor_preset("cluster_amplitude", second, first, indices_type)
     sq_op = make_sqop(first, second, indices_type)
     return Term([tensor], sq_op, 1.0 / coeff)
+
+
+def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0, expand_hole=True):
+    """
+    Contract a list of Term objects.
+    :param terms: a list of Term objects to be contracted
+    :param max_cu: max level of cumulant
+    :param max_n_open: max number of open indices for contractions kept for return
+    :param min_n_open: min number of open indices for contractions kept for return
+    :param scale_factor: a scaling factor for the results
+    :param expand_hole: expand HoleDensity to Kronecker - Cumulant if True
+    :return: a map of number of open indices to a list of contracted and canonicalized Term objects
+    """
+    out = defaultdict(list)
+
+    if len(terms) == 0:
+        raise ValueError("size of terms cannot be zero.")
+
+    coeff = float(scale_factor)
+    tensors = []
+    sq_ops_to_be_contracted = []
+    for term in terms:
+        if not isinstance(term, Term):
+            raise TypeError(f"{term} if not of Term type.")
+        coeff *= term.coeff
+        tensors += term.list_of_tensors
+        if not term.sq_op.is_empty_sqop():
+            sq_ops_to_be_contracted.append(term.sq_op)
+
+    if len(sq_ops_to_be_contracted) < 2:
+        sq_op = sq_ops_to_be_contracted[0] if len(sq_ops_to_be_contracted) == 1 else terms[0].sq_op
+        out[sq_op.n_ops].append(Term(tensors, sq_op, coeff))
+    else:
+        contracted = generate_operator_contractions(sq_ops_to_be_contracted, max_cu,
+                                                    max_n_open, min_n_open, expand_hole)
+        for k, contractions in contracted.items():
+            print(len(contractions))
+            terms_k = []
+            for sign, densities, sq_op in contractions:
+                term = Term(tensors + densities, sq_op, sign * coeff)
+                terms_k.append(term.canonicalize())
+            out[k] = combine_terms(sorted(terms_k))
+
+    return out
 
 
 def combine_terms(terms, presorted=True):
@@ -63,70 +108,31 @@ def combine_terms(terms, presorted=True):
     return sorted(out)
 
 
-def contract_terms(terms, maxcu=3, maxmb=3, minmb=0, scale_factor=1.0, expand_hole=True):
-    """
-    Contract a list of Term objects.
-    :param terms: a list of Term objects to be contracted
-    :param maxcu: max level of cumulants allowed
-    :param maxmb: max level of many-body operators kept
-    :param minmb: min level of many-body operators kept
-    :param scale_factor: a scaling factor for the results
-    :param expand_hole: expand HoleDensity to Kronecker - Cumulant if True
-    :return: a map of number of open indices to a list of contracted and canonicalized Term objects
-    """
-    out = defaultdict(list)
-
-    coeff = 1.0 * scale_factor
-    tensors = []
-    sqops_to_be_contracted = []
-    for term in terms:
-        if not isinstance(term, Term):
-            raise ValueError("{} if not of Term type".format(term))
-        coeff *= term.coeff
-        tensors += term.list_of_tensors
-        if not term.sqop.is_empty_sqop():
-            sqops_to_be_contracted.append(term.sqop)
-
-    if len(sqops_to_be_contracted) < 2:
-        sqop = sqops_to_be_contracted[0] if len(sqops_to_be_contracted) == 1 else SQOperator([], [])
-        nopen = sqop.ncre + sqop.nann
-        out[nopen].append(Term(tensors, sqop, coeff))
-    else:
-        contracted = generate_operator_contractions(sqops_to_be_contracted, maxcu, maxmb, minmb, expand_hole)
-        for k, contractions in contracted.items():
-            print(len(contractions))
-            terms_k = []
-            for sign, densities, sqop in contractions:
-                term = Term(tensors + densities, sqop, sign * coeff)
-                terms_k.append(term.canonicalize())
-            out[k] = combine_terms(sorted(terms_k))
-
-    return out
-
-
-def commutator(terms, maxcu=3, maxmb=3, minmb=0, scale_factor=1.0, expand_hole=True):
+def commutator(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0, expand_hole=True):
     """
     Compute the nested commutator of terms, i.e. [[...[[term_0, term_1], term_2], ...], term_k].
     :param terms: a list of terms.
-    :param maxcu: max level of cumulants allowed
-    :param maxmb: max level of many-body operators kept in results
-    :param minmb: min level of many-body operators kept in results
+    :param max_cu: max level of cumulant
+    :param max_n_open: max number of open indices for contractions kept for return
+    :param min_n_open: min number of open indices for contractions kept for return
     :param scale_factor: a scaling factor for the results
     :param expand_hole: expand HoleDensity to Kronecker - Cumulant if True
     :return: a map of number of open indices to a list of contracted canonicalized Term objects
     """
-    if len(terms) < 2:
-        term = terms[0] if len(terms) == 1 else Term([], SQOperator([], []), 0.0)
-        nopen = term.sqop.nops()
-        return {nopen: [term]}
+    if len(terms) == 0:
+        raise ValueError("size of terms cannot be zero.")
+
+    if len(terms) == 1:
+        term = terms[0]
+        return {term.sq_op.n_ops: [term]}
 
     out = defaultdict(list)
 
     def commutator_recursive(chosen_terms, unchosen_terms, sign):
         if len(unchosen_terms) == 0:
-            temp = contract_terms(chosen_terms, maxcu, maxmb, minmb, sign * scale_factor, expand_hole)
-            for nopen, terms in temp.items():
-                out[nopen] = combine_terms(out[nopen] + terms, presorted=False)
+            temp = contract_terms(chosen_terms, max_cu, max_n_open, min_n_open, sign * scale_factor, expand_hole)
+            for n_open, _terms in temp.items():
+                out[n_open] = combine_terms(out[n_open] + _terms, presorted=False)
         else:
             commutator_recursive(chosen_terms + [unchosen_terms[0]], unchosen_terms[1:], sign)
             commutator_recursive([unchosen_terms[0]] + chosen_terms, unchosen_terms[1:], -sign)
@@ -137,33 +143,9 @@ def commutator(terms, maxcu=3, maxmb=3, minmb=0, scale_factor=1.0, expand_hole=T
 
 
 
-
-# def Hamiltonian_operator(k, start=0):
-#     coeff = factorial(k) ** 2
-#     r0, r1, r2 = start, start + k, start + 2 * k
-#     tensor = Hamiltonian(["g{}".format(i) for i in range(r1, r2)],
-#                          ["g{}".format(i) for i in range(r0, r1)])
-#     sqop = SQOperator(["g{}".format(i) for i in range(r0, r1)],
-#                       ["g{}".format(i) for i in range(r1, r2)])
-#     return Term([tensor], sqop, 1 / coeff)
-#
-#
-# def cluster_operator(k, start=0, deexcitation=False, hole_index='h', particle_index='p'):
-#     coeff = factorial(k) ** 2
-#     r0, r1 = start, start + k
-#     hole = ["{}{}".format(hole_index, i) for i in range(r0, r1)]
-#     particle = ["{}{}".format(particle_index, i) for i in range(r0, r1)]
-#     if deexcitation:
-#         tensor = ClusterAmp(particle, hole)
-#         sqop = SQOperator(hole, particle)
-#     else:
-#         tensor = ClusterAmp(hole, particle)
-#         sqop = SQOperator(particle, hole)
-#     return Term([tensor], sqop, 1 / coeff)
-
-T2 = cluster_operator(2)
-T2_1 = cluster_operator(2, 2)
-V = Hamiltonian_operator(2)
+# T2 = cluster_operator(2)
+# T2_1 = cluster_operator(2, 2)
+# V = Hamiltonian_operator(2)
 # VT2_comm = commutator([V, T2, T2_1])
 # for i, terms in VT2_comm.items():
 #     filename = "VT2T2_{}".format(i)
@@ -206,33 +188,33 @@ V = Hamiltonian_operator(2)
 #             init_temp = False if terms[j].sqop == last_sqop else True
 #             w.writelines(terms[j].ambit(add_permutation, init_temp))
 
-out = defaultdict(list)
-for i in range(1, 4):
-    H = Hamiltonian_operator(i)
-    for j in range(1, 4):
-        T = cluster_operator(j, hole_index='c', particle_index='v')
-        comm = commutator([H, T])
-        for nopen, terms in comm.items():
-            out[nopen] += terms
-
-for nopen, terms in out.items():
-    terms = sorted(terms)
-    filename = "./comm/ldsrg_sr/C{}".format(nopen / 2)
-    with open(filename, 'w') as w:
-        nterms = len(terms)
-        for i_term in range(nterms):
-            try:
-                last_sqop = terms[i_term - 1].sqop
-            except IndexError:
-                last_sqop = SQOperator([], [])
-            try:
-                next_sqop = terms[i_term + 1].sqop
-            except IndexError:
-                next_sqop = SQOperator([], [])
-            add_permutation = False if terms[i_term].sqop == next_sqop else True
-            init_temp = False if terms[i_term].sqop == last_sqop else True
-            w.writelines(terms[i_term].ambit(add_permutation, init_temp))
-            # w.writelines(terms[i_term].latex(delimiter=True, backslash=True) + '\n')
+# out = defaultdict(list)
+# for i in range(1, 4):
+#     H = Hamiltonian_operator(i)
+#     for j in range(1, 4):
+#         T = cluster_operator(j, hole_index='c', particle_index='v')
+#         comm = commutator([H, T])
+#         for nopen, terms in comm.items():
+#             out[nopen] += terms
+#
+# for nopen, terms in out.items():
+#     terms = sorted(terms)
+#     filename = "./comm/ldsrg_sr/C{}".format(nopen / 2)
+#     with open(filename, 'w') as w:
+#         nterms = len(terms)
+#         for i_term in range(nterms):
+#             try:
+#                 last_sqop = terms[i_term - 1].sqop
+#             except IndexError:
+#                 last_sqop = SQOperator([], [])
+#             try:
+#                 next_sqop = terms[i_term + 1].sqop
+#             except IndexError:
+#                 next_sqop = SQOperator([], [])
+#             add_permutation = False if terms[i_term].sqop == next_sqop else True
+#             init_temp = False if terms[i_term].sqop == last_sqop else True
+#             w.writelines(terms[i_term].ambit(add_permutation, init_temp))
+#             # w.writelines(terms[i_term].latex(delimiter=True, backslash=True) + '\n')
 
 # for i in range(1, 4):
 #     H = Hamiltonian_operator(i)

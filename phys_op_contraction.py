@@ -60,7 +60,7 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
             raise TypeError(f"{term} if not of Term type.")
         coeff *= term.coeff
         tensors += term.list_of_tensors
-        if not term.sq_op.is_empty_sqop():
+        if not term.sq_op.is_empty():
             sq_ops_to_be_contracted.append(term.sq_op)
 
     if len(sq_ops_to_be_contracted) < 2:
@@ -142,6 +142,19 @@ def commutator(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0, ex
     return out
 
 
+def print_results(results, form='latex'):
+    if form == 'latex':
+        print("\\begin{align}")
+        for n_open, terms in results.items():
+            print(f"% Open Indices {n_open}")
+            for term in terms:
+                print(term.latex(delimiter=True, backslash=True))
+        print("\\end{align}")
+    else:
+        for n_open, terms in results.items():
+            print(f"// Open Indices {n_open}")
+            for term in terms:
+                print(term.ambit())
 
 # T2 = cluster_operator(2)
 # T2_1 = cluster_operator(2, 2)

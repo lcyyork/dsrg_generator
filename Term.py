@@ -160,7 +160,7 @@ class Term:
         fraction = Fraction(value).limit_denominator(1000000)
 
         if form == 'ambit':
-            if '/' in str(fraction):
+            if '/' not in str(fraction):
                 out = f"{fraction.numerator}.0"
             else:
                 out = f"({fraction.numerator}.0 / {fraction.denominator}.0)"
@@ -216,17 +216,21 @@ class Term:
         tensors_str = " * ".join((tensor.ambit() for tensor in self.list_of_tensors))
 
         if not self.sq_op.exist_permute_format():
-            lhs = f"{name}_{self.sq_op.n_ann}_{self.sq_op.n_cre}{self.sq_op.ambit(cre_first=False)}"
-            rhs = coeff_str + tensors_str
+            lhs = f"{name}{self.sq_op.n_ann}" if self.sq_op.is_particle_conserving()\
+                else f"{name}_{self.sq_op.n_ann}_{self.sq_op.n_cre}"
+            lhs = f"{lhs}{self.sq_op.ambit(cre_first=False)}"
+            rhs = f"{coeff_str} * {tensors_str}"
             return lhs + " += " + rhs + ";\n"
         else:
             space_str = "".join([i.space for i in self.sq_op.ann_ops] + [i.space for i in self.sq_op.cre_ops])
             out = f'temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {{"{space_str}"}});\n'
 
-            temp_str = f'temp{self.sq_op.ambit(cre_first=False)} += {coeff_str + tensors_str};\n'
+            temp_str = f'temp{self.sq_op.ambit(cre_first=False)} += {coeff_str} * {tensors_str};\n'
+            lhs_name = f"{name}{self.sq_op.n_ann}" if self.sq_op.is_particle_conserving()\
+                else f"{name}_{self.sq_op.n_ann}_{self.sq_op.n_cre}"
 
             for sign, lhs_indices in self.sq_op.ambit_permute_format(cre_first=False):
-                lhs = f"{name}_{self.sq_op.n_ann}_{self.sq_op.n_cre}{lhs_indices}"
+                lhs = f"{lhs_name}{lhs_indices}"
                 out += f"{lhs} {'+' if sign == 1 else '-'}= {temp_str};\n"
 
             return out
@@ -565,6 +569,8 @@ class Term:
         """
         # remove Kronecker delta, remove active amplitudes, simplify cumulant indices
         self.simplify(simplify_core_cumulant, remove_active_amplitudes)
+        if self.coeff == 0:
+            return self
 
         # order tensors according to adjacency matrix
         self.order_tensors(simplified=True)

@@ -243,7 +243,7 @@ def expand_hole_densities(list_of_tensors):
 
     n_hole = len(hole_densities)
     if n_hole == 0:
-        out.append((1, list_of_tensors))
+        yield 1, list_of_tensors
     else:
         for temp in product(range(2), repeat=n_hole):
             sign = (-1) ** sum(temp)

@@ -450,7 +450,7 @@ class Term:
 
     def similar(self, other):
         self._is_valid_operand(other)
-        return self.build_adjacency_matrix == other.build_adjacency_matrix
+        return self.build_adjacency_matrix() == other.build_adjacency_matrix()
 
     def almost_similar(self, other):
         self._is_valid_operand(other)
@@ -538,14 +538,13 @@ class Term:
 
         return replacement
 
-    def canonicalize_simple(self):
+    def _relabel_indices(self, replacement):
         """
-        Relabel the term using minimal index labels and reorder indices.
-        :return: the relabeled term
+        Relabel indices of this term according to the replacement map and resort the indices ordering.
+        :param replacement: the replacement map
+        :return: a tuple of (sign, sorted tensors, sorted sq_op)
         """
-        replacement = self._minimal_indices()
-
-        sign = 1.0
+        sign = 1
 
         sq_op = self._replace_sqop_indices(self.sq_op, replacement)
         sq_op, _sign = sq_op.canonicalize()
@@ -555,6 +554,17 @@ class Term:
         for i, tensor in enumerate(list_of_tensors):
             list_of_tensors[i], _sign = tensor.canonicalize()
             sign *= _sign
+
+        return sign, list_of_tensors, sq_op
+
+    def canonicalize_simple(self):
+        """
+        Relabel the term using minimal index labels and reorder indices.
+        :return: the relabeled term
+        """
+        replacement = self._minimal_indices()
+
+        sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
 
         return Term(list_of_tensors, sq_op, self.coeff * sign)
 
@@ -574,6 +584,32 @@ class Term:
 
         # order tensors according to adjacency matrix
         self.order_tensors(simplified=True)
+
+        # create replacement map according to connections
+        replacement = dict()
+        next_index = {i: 0 for i in space_priority}
+        n_non_cu = sum([not isinstance(i, Cumulant) for i in self.list_of_tensors])
+
+        open_indices = self.sq_op.cre_ops.indices_set ^ self.sq_op.ann_ops.indices_set
+        if not self.sq_op.is_empty():
+            for tensor in self.list_of_tensors[:n_non_cu]:
+                for i in [j for j in tensor.upper_indices if j in open_indices]:
+                    replacement[i] = self._generate_next_index(i.space, next_index)
+                for i in [j for j in tensor.lower_indices if j in open_indices]:
+                    replacement[i] = self._generate_next_index(i.space, next_index)
+
+        for i, tensor1 in enumerate(self.list_of_tensors[:n_non_cu]):
+            for tensor2 in self.list_of_tensors[i + 1:]:
+                for k in sorted(tensor1.upper_indices.indices_set & tensor2.lower_indices.indices_set):
+                    replacement[k] = self._generate_next_index(k.space, next_index)
+                for k in sorted(tensor1.lower_indices.indices_set & tensor2.upper_indices.indices_set):
+                    replacement[k] = self._generate_next_index(k.space, next_index)
+
+        sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
+
+        self._list_of_tensors = list_of_tensors
+        self._sq_op = sq_op
+        self.coeff *= sign
 
         # relabel indices
         return self.canonicalize_simple()

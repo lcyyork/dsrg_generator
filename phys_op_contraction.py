@@ -6,8 +6,9 @@ from sympy.utilities.iterables import multiset_permutations
 from integer_partition import integer_partition
 from mo_space import space_relation
 from Indices import Indices
+from IndicesPair import make_indices_pair
 from SQOperator import make_sqop, SecondQuantizedOperator
-from Tensor import make_tensor_preset
+from Tensor import make_tensor_preset, ClusterAmplitude
 from Term import Term
 from sqop_contraction import generate_operator_contractions
 from Timer import Timer
@@ -24,16 +25,18 @@ def Hamiltonian_operator(k, start=0, indices_type='spin-orbital'):
     return Term([tensor], sq_op, 1.0 / coeff)
 
 
-def cluster_operator(k, start=0, de_excitation=False, hole_label='h', particle_label='p', indices_type='spin-orbital'):
+def cluster_operator(k, start=0, de_excitation=False, name='T', scale_factor=1.0,
+                     hole_label='h', particle_label='p', indices_type='spin-orbital'):
     coeff = factorial(k) ** 2
     r0, r1 = start, start + k
     hole = [f"{hole_label}{i}" for i in range(r0, r1)]
     particle = [f"{particle_label}{i}" for i in range(r0, r1)]
     first = hole if de_excitation else particle
     second = particle if de_excitation else hole
-    tensor = make_tensor_preset("cluster_amplitude", second, first, indices_type)
+    indices_pair = make_indices_pair(second, first, indices_type)
+    tensor = ClusterAmplitude(indices_pair, name=name)
     sq_op = make_sqop(first, second, indices_type)
-    return Term([tensor], sq_op, 1.0 / coeff)
+    return Term([tensor], sq_op, scale_factor / coeff)
 
 
 def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0, expand_hole=True):

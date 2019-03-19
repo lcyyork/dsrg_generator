@@ -474,10 +474,10 @@ class Term:
 
         # figure out possible equivalent tensors with same name, n_upper, n_lower
         equivalent_tensors = defaultdict(list)
-        n_non_cu = None
+        n_non_cu = n_tensors
         for i, tensor in enumerate(self.list_of_tensors):
             equivalent_tensors[f"{tensor.name}_{tensor.n_upper}_{tensor.n_lower}"].append(i)
-            if n_non_cu is None and isinstance(tensor, Cumulant):
+            if n_non_cu == n_tensors and isinstance(tensor, Cumulant):
                 n_non_cu = i
 
         # make sure we fix ordering of amplitudes first, then cumulants

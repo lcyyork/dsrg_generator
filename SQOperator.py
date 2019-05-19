@@ -130,27 +130,27 @@ class SecondQuantizedOperator:
             return self.cre_ops.n_beta() == self.ann_ops.n_beta()
         raise ValueError(f"Invalid quest, n_cre ({self.n_cre}) != n_ann ({self.n_ann}).")
 
-    def exist_permute_format(self):
+    def exist_permute_format(self, p_cre, p_ann):
         """ Return True if there exists a multiset permutation of this object. """
-        return self.cre_ops.exist_permute_format() or self.ann_ops.exist_permute_format()
+        return self.cre_ops.exist_permute_format(p_cre) or self.ann_ops.exist_permute_format(p_ann)
 
-    def n_multiset_permutation(self):
+    def n_multiset_permutation(self, p_cre, p_ann):
         """ Return the number of multiset permutations. """
-        return self.cre_ops.n_multiset_permutation() * self.ann_ops.n_multiset_permutation()
+        return self.cre_ops.n_multiset_permutation(p_cre) * self.ann_ops.n_multiset_permutation(p_ann)
 
-    def latex_permute_format(self):
+    def latex_permute_format(self, p_cre, p_ann):
         """
         Compute the multiset-permutation form of the SQOperator object.
         :return: a tuple of (the number of multiset permutations, a string for permutation, a string for operator)
         """
         if self.is_empty():
             return 1, '', ''
-        n_perm_cre, perm_cre = self.cre_ops.latex_permute_format()
-        n_perm_ann, perm_ann = self.ann_ops.latex_permute_format()
+        n_perm_cre, perm_cre = self.cre_ops.latex_permute_format(p_cre)
+        n_perm_ann, perm_ann = self.ann_ops.latex_permute_format(p_ann)
         whitespace = ' ' if perm_cre and perm_ann else ''
         return n_perm_cre * n_perm_ann, perm_cre + whitespace + perm_ann, self.latex()
 
-    def ambit_permute_format(self, cre_first=False):
+    def ambit_permute_format(self, p_cre, p_ann, cre_first=False):
         """
         Generate the multiset-permutation form for ambit.
         :param cre_first: True if creation operators comes before annihilation operators
@@ -160,8 +160,9 @@ class SecondQuantizedOperator:
             yield 1, ''
         else:
             first, second = (self.cre_ops, self.ann_ops) if cre_first else (self.ann_ops, self.cre_ops)
-            for sign_1, str_1 in first.ambit_permute_format():
-                for sign_2, str_2 in second.ambit_permute_format():
+            p1, p2 = (p_cre, p_ann) if cre_first else (p_ann, p_cre)
+            for sign_1, str_1 in first.ambit_permute_format(p1):
+                for sign_2, str_2 in second.ambit_permute_format(p2):
                     yield sign_1 * sign_2, f'["{str_1},{str_2}"]'
 
     def generate_spin_cases(self, particle_conserving=True):

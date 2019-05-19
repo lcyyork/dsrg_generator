@@ -262,24 +262,28 @@ class Indices:
         self._is_valid_operand(other)
         return len(self.indices_set & other.indices_set) != 0
 
-    def n_multiset_permutation(self):
+    def n_multiset_permutation(self, part):
         """ Return the number of multiset permutations of this Indices object. """
-        if not self.exist_permute_format():
+        if not self.exist_permute_format(part):
             return 1
-        return len(list(multiset_permutations([index.space for index in self.indices])))
+        n = len(part)
+        list_index = []
+        for i in range(n):
+            list_index += [i] * len(part[i])
+        return len(list(multiset_permutations(list_index)))
 
-    def exist_permute_format(self):
+    def exist_permute_format(self, part):
         """ Return True if there is a valid multiset permutation. """
         return False
 
-    def latex_permute_format(self):
+    def latex_permute_format(self, part):
         """
         Compute the multiset-permutation form of this Indices object for latex.
         :return: the number of multiset permutations and a string of permutation for latex
         """
         return 1, ""
 
-    def ambit_permute_format(self):
+    def ambit_permute_format(self, part):
         """
         Generate the multiset-permutation form and the corresponding sign of this Indices object for ambit.
         :return: sign change, a string of permutation for ambit
@@ -342,49 +346,42 @@ class IndicesAntisymmetric(Indices):
         list_index, permutation_count = sort_and_count_inversions(self)
         return self.__class__(list_index), (-1) ** permutation_count
 
-    def exist_permute_format(self):
+    def exist_permute_format(self, part):
         """ Return True if there is a valid multiset permutation. """
         if self.size == 0:
             return False
-        space = [i.space for i in self.indices]
-        return space.count(space[0]) != self.size
+        return len(part) != 1
 
-    def latex_permute_format(self):
+    def latex_permute_format(self, part):
         """
         Compute the multiset-permutation form of this Indices object for latex.
         :return: the number of multiset permutations and a string of permutation for latex
         """
-        nperm = self.n_multiset_permutation()
+        nperm = self.n_multiset_permutation(part)
         if nperm == 1:
             return 1, ""
         else:
-            indices = sorted(self.indices)
-            perm = indices[0].latex()
-            for i, index in enumerate(indices[1:], 1):
-                if index.space != indices[i - 1].space:
-                    perm += ' /'
-                perm += ' ' + index.latex()
+            perm = ' / '.join([' '.join([i.latex() for i in indices]) for indices in part])
             return nperm, f"{{\\cal P}}({perm})"
 
-    def ambit_permute_format(self):
+    def ambit_permute_format(self, part):
         """
         Generate the multiset-permutation form and the corresponding sign of this Indices object for ambit.
         :return: sign change, a string of permutation for ambit
         """
-        space_map = collections.defaultdict(list)
-        for index in self.indices:
-            space_map[index.space].append(index)
-        original_ordering = {v: i for i, v in enumerate(self)}
-        for space_perm in multiset_permutations([index.space for index in self.indices]):
-            permuted = [0] * self.size
-            next_available = {space: 0 for space in space_map.keys()}
-            indices = []
-            for i, space in enumerate(space_perm):
-                index = space_map[space][next_available[space]]
-                indices.append(index)
-                next_available[space] += 1
-                permuted[i] = original_ordering[index]
-            yield (-1) ** (sort_and_count_inversions(permuted)[1]), ",".join(map(str, indices))
+        n = len(part)
+        list_index = []
+        for i in range(n):
+            list_index += [i] * len(part[i])
+
+        for perm in multiset_permutations(list_index):
+            next_available = [0] * n
+            list_of_indices = []
+            for i in perm:
+                list_of_indices.append(part[i][next_available[i]])
+                next_available[i] += 1
+            permuted = self.__class__(list_of_indices)
+            yield (-1) ** self.count_permutations(permuted), str(permuted)
 
 
 @Indices.register_subclass('spin-orbital')
@@ -443,14 +440,14 @@ class IndicesSpinIntegrated(IndicesAntisymmetric):
     def spin_pure(self):
         return self._spin_pure
 
-    def exist_permute_format(self):
+    def exist_permute_format(self, part):
         """ Return True if there is a valid multiset permutation. """
         if not self.spin_pure:
             return False
         else:
-            return super().exist_permute_format()
+            return super().exist_permute_format(part)
 
-    def latex_permute_format(self):
+    def latex_permute_format(self, part):
         """
         Compute the multiset-permutation form of this Indices object for latex.
         :return: the number of multiset permutations and a string of permutation for latex
@@ -458,9 +455,9 @@ class IndicesSpinIntegrated(IndicesAntisymmetric):
         if not self.spin_pure:
             return 1, ""
         else:
-            return super().latex_permute_format()
+            return super().latex_permute_format(part)
 
-    def ambit_permute_format(self):
+    def ambit_permute_format(self, part):
         """
         Generate the multiset-permutation form and the corresponding sign of this Indices object for ambit.
         :return: sign change, a string of permutation for ambit
@@ -468,4 +465,4 @@ class IndicesSpinIntegrated(IndicesAntisymmetric):
         if not self.spin_pure:
             yield 1, ",".join(map(str, self.indices))
         else:
-            yield from super().ambit_permute_format()
+            yield from super().ambit_permute_format(part)

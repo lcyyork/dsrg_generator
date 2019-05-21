@@ -4,7 +4,7 @@ from fractions import Fraction
 from itertools import product
 from math import factorial
 from typing import List
-from mo_space import  space_priority, space_relation, space_priority_so, space_relation_so
+from mo_space import space_priority, space_relation, space_priority_so, space_relation_so
 from Index import Index
 from Indices import Indices, IndicesSpinOrbital
 from IndicesPair import IndicesPair
@@ -321,7 +321,10 @@ class Term:
             upper_indices = tensor.type_of_indices([replacement[i] for i in tensor.upper_indices])
             lower_indices = tensor.type_of_indices([replacement[i] for i in tensor.lower_indices])
             indices_pair = IndicesPair(upper_indices, lower_indices)
-            list_of_tensors.append(tensor.__class__(indices_pair, tensor.name, tensor.priority))
+            if isinstance(tensor, ClusterAmplitude):
+                list_of_tensors.append(tensor.__class__(indices_pair, tensor.name, tensor.priority, tensor.excitation))
+            else:
+                list_of_tensors.append(tensor.__class__(indices_pair, tensor.name, tensor.priority))
         return list_of_tensors
 
     @staticmethod

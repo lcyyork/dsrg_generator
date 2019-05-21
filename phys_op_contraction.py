@@ -25,16 +25,16 @@ def Hamiltonian_operator(k, start=0, indices_type='spin-orbital'):
     return Term([tensor], sq_op, 1.0 / coeff)
 
 
-def cluster_operator(k, start=0, de_excitation=False, name='T', scale_factor=1.0,
+def cluster_operator(k, start=0, excitation=True, name='T', scale_factor=1.0,
                      hole_label='h', particle_label='p', indices_type='spin-orbital'):
     coeff = factorial(k) ** 2
     r0, r1 = start, start + k
     hole = [f"{hole_label}{i}" for i in range(r0, r1)]
     particle = [f"{particle_label}{i}" for i in range(r0, r1)]
-    first = hole if de_excitation else particle
-    second = particle if de_excitation else hole
+    first = particle if excitation else hole
+    second = hole if excitation else particle
     indices_pair = make_indices_pair(second, first, indices_type)
-    tensor = ClusterAmplitude(indices_pair, name=name)
+    tensor = ClusterAmplitude(indices_pair, name=name, excitation=excitation)
     sq_op = make_sqop(first, second, indices_type)
     return Term([tensor], sq_op, scale_factor / coeff)
 

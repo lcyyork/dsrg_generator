@@ -1,5 +1,9 @@
+from sympy.combinatorics.tensor_can import get_symmetric_group_sgs, canonicalize, bsgs_direct_product, riemann_bsgs
+from sympy.combinatorics import Permutation
+
 from mo_space import space_relation
 from IndicesPair import IndicesPair, make_indices_pair
+from Indices import IndicesAntisymmetric
 
 
 def make_tensor_preset(tensor_type, upper_indices, lower_indices, indices_type=""):
@@ -27,6 +31,35 @@ def make_tensor(name, upper_indices, lower_indices, indices_type="", priority=0)
     """
     indices_pair = make_indices_pair(upper_indices, lower_indices, indices_type)
     return Tensor(indices_pair, name, priority)
+
+
+def tensor_bsgs(tensor):
+    """
+    Base and strong generating set for the input tensor.
+    :return: a tuple of base and strong generating set
+    """
+    if not isinstance(tensor, Tensor):
+        raise ValueError("Input tensor must be Tensor type")
+
+    if tensor.n_body > 3:
+        raise ValueError("4- and higher-body tensors are not supported yet.")
+
+    if isinstance(tensor.lower_indices, IndicesAntisymmetric):
+        if tensor.n_body == 1:
+            return [0], [Permutation(3)(0, 1)]
+        elif tensor.n_body == 2:
+            return riemann_bsgs
+        else:
+            return list(range(5)), [Permutation(1, 2)(6, 7), Permutation(4, 5)(6, 7),
+                                    Permutation(7)(3, 4, 5), Permutation(7)(0, 3)(1, 4)(2, 5)]
+    else:
+        raise ValueError("Spin-adapted bsgs not ready yet.")
+        if tensor.n_body == 1:
+            return [0], [Permutation(0, 1)]
+        elif tensor.n_body == 2:
+            return
+        else:
+            return
 
 
 class Tensor:

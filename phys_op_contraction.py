@@ -96,6 +96,9 @@ def combine_terms(terms, presorted=True):
     if not presorted:
         terms = sorted(terms)
 
+    if len(terms) == 0:
+        return []
+
     out = [terms[0]]
     for term in terms[1:]:
         if term.almost_equal(out[-1]):

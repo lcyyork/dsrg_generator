@@ -1,14 +1,18 @@
 from copy import deepcopy
 from collections import defaultdict
 from fractions import Fraction
-from itertools import product
+from itertools import product, groupby
 from math import factorial
+from sympy.combinatorics.tensor_can import get_symmetric_group_sgs, canonicalize
+from sympy.combinatorics.tensor_can import bsgs_direct_product, riemann_bsgs
+from sympy.combinatorics import Permutation, PermutationGroup
+
 from typing import List
-from mo_space import space_priority, space_relation, space_priority_so, space_relation_so
+from mo_space import space_priority, space_relation, space_priority_so, space_relation_so, mo_space
 from Index import Index
-from Indices import Indices, IndicesSpinOrbital
+from Indices import Indices, IndicesSpinOrbital, IndicesAntisymmetric
 from IndicesPair import IndicesPair
-from Tensor import Tensor, Cumulant, Hamiltonian, ClusterAmplitude, Kronecker, HoleDensity, make_tensor_preset
+from Tensor import Tensor, Cumulant, Hamiltonian, ClusterAmplitude, Kronecker, HoleDensity, tensor_bsgs
 from SQOperator import SecondQuantizedOperator, make_sqop
 from SpaceCounter import SpaceCounter
 
@@ -169,47 +173,49 @@ class Term:
 
         return out
 
-    def exist_permute_format(self, cre=True):
+    def exist_permute_format(self):
         """
         Test if there are any permutation format of this term.
         :param cre: test creation operators if True, else test for annihilation operators
         :return: permutation partition of the indices P(ij/k/l) = [[i,j], [k], [l]]
         """
-        sq_op = self.sq_op.cre_ops if cre else self.sq_op.ann_ops
-        tensor_indices = [tensor.lower_indices for tensor in self.list_of_tensors]
-        if not cre:
-            tensor_indices = [tensor.upper_indices for tensor in self.list_of_tensors]
+        print(self)
+        cre_ops = self.sq_op.cre_ops
+        ann_ops = self.sq_op.ann_ops
+        tensor_indices = [tensor.upper_indices + tensor.lower_indices for tensor in self.list_of_tensors]
+        print(tensor_indices)
 
-        if sq_op.size == 0:
-            return [[]]
-        elif sq_op.size == 1:
-            return [[sq_op[0]]]
-        else:
-            # test if indices are in different operators
-            processed = []
-            for indices in tensor_indices:
-                open_indices = []
-                for index in indices:
-                    if index in sq_op.indices:
-                        open_indices.append(index)
-                if len(open_indices) != 0:
-                    processed.append(open_indices)
+        def exist_permute_atomic(ops, tensor_indices):
+            if ops.size == 0:
+                return [[]]
+            elif ops.size == 1:
+                return [[ops[0]]]
+            else:
+                # test if indices are in different operators
+                processed = []
+                for indices in tensor_indices:
+                    open_indices = [i for i in indices if i in ops.indices]
+                    if len(open_indices) != 0:
+                        processed.append(open_indices)
+                print(processed)
 
-        out = []
-        for indices in processed:
-            indices = sorted(indices)
-            space = indices[0].space
-            temp = [indices[0]]
-            for index in indices[1:]:
-                if index.space == space:
-                    temp.append(index)
-                else:
-                    space = index.space
-                    out.append(temp)
-                    temp = []
-            out.append(indices)
+                out = []
+                for indices in processed:
+                    indices = sorted(indices)
+                    space = indices[0].space
+                    temp = [indices[0]]
+                    for index in indices[1:]:
+                        if index.space == space:
+                            temp.append(index)
+                        else:
+                            space = index.space
+                            out.append(temp)
+                            temp = []
+                        out.append(temp)
+                print(out)
+                return out
 
-        return out
+        return exist_permute_atomic(cre_ops, tensor_indices), exist_permute_atomic(ann_ops, tensor_indices)
 
     def latex(self, dollar=False, permute_format=True, delimiter=False, backslash=False):
         """
@@ -224,7 +230,7 @@ class Term:
 
         n_perm, perm_str, sq_op_str = 1, "", self.sq_op.latex()
         if permute_format:
-            p_cre, p_ann = self.exist_permute_format(True), self.exist_permute_format(False)
+            p_cre, p_ann = self.exist_permute_format()
             n_perm, perm_str, sq_op_str = self.sq_op.latex_permute_format(p_cre, p_ann)
 
         coeff_str = self.format_coeff(self.coeff / n_perm)
@@ -255,14 +261,14 @@ class Term:
             raise TypeError(f"Invalid ambit name, given '{name.__class__.__name__}', required 'str'.")
 
         factor = factorial(self.sq_op.n_cre) * factorial(self.sq_op.n_ann)
-        p_cre, p_ann = self.exist_permute_format(True), self.exist_permute_format(False)
+        p_cre, p_ann = self.exist_permute_format()
         n_perm = self.sq_op.n_multiset_permutation(p_cre, p_ann)
         coeff_str = self.format_coeff(self.coeff * factor / n_perm, 'ambit')
 
         tensors_str = " * ".join((tensor.ambit() for tensor in self.list_of_tensors))
 
         if not self.sq_op.exist_permute_format(p_cre, p_ann):
-            lhs = f"{name}{self.sq_op.n_ann}" if self.sq_op.is_particle_conserving()\
+            lhs = f"{name}{self.sq_op.n_ann}" if self.sq_op.is_particle_conserving() \
                 else f"{name}_{self.sq_op.n_ann}_{self.sq_op.n_cre}"
             lhs = f"{lhs}{self.sq_op.ambit(cre_first=False)}"
             rhs = f"{coeff_str} * {tensors_str}"
@@ -279,7 +285,7 @@ class Term:
 
             out += f'temp{self.sq_op.ambit(cre_first=False)} += {coeff_str} * {tensors_str};\n'
             temp_str = f'temp{self.sq_op.ambit(cre_first=False)}'
-            lhs_name = f"{name}{self.sq_op.n_ann}" if self.sq_op.is_particle_conserving()\
+            lhs_name = f"{name}{self.sq_op.n_ann}" if self.sq_op.is_particle_conserving() \
                 else f"{name}_{self.sq_op.n_ann}_{self.sq_op.n_cre}"
 
             for sign, lhs_indices in self.sq_op.ambit_permute_format(p_cre, p_ann, cre_first=False):
@@ -669,6 +675,95 @@ class Term:
 
         # relabel indices
         return self.canonicalize_simple()
+
+    def canonicalize_sympy(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
+        """
+        Bring the current term to canonical form, which is defined by a sequence of ordering:
+        1. order tensor by connection to Hamiltonian
+        2. relabel indices
+        :param simplify_core_cumulant: change a cumulant labeled by core indices to a Kronecker delta
+        :param remove_active_amplitudes: remove terms when its contains all-active amplitudes
+        :return: the "canonical" form of this term
+        """
+        # remove Kronecker delta, remove active amplitudes, simplify cumulant indices
+        self.simplify(simplify_core_cumulant, remove_active_amplitudes)
+        if self.coeff == 0:
+            return self
+
+        # use sympy to canonicalize tensor indices
+        for tensor in self.list_of_tensors:
+            if tensor.n_body > 3:
+                raise ValueError("Canonicalization using SymPy only supports 1-, 2-, and 3-body operators now.")
+
+        minimal_indices_map = self._minimal_indices()
+
+        sq_op = self._replace_sqop_indices(self.sq_op, minimal_indices_map)
+        sq_op, sign = sq_op.canonicalize()
+
+        ordered_indices = {v: k for k, v in enumerate(sq_op.cre_ops + sq_op.ann_ops)}
+
+        # figure out dummies
+        dummies_indices = [i for i in sorted(minimal_indices_map.values())
+                           if (i not in sq_op.cre_ops) and (i not in sq_op.ann_ops)]
+        dummies_map = {i.space: [] for i in dummies_indices}
+        for i, v in enumerate(dummies_indices):
+            dummies_map[v.space] += [2 * i + sq_op.n_ops, 2 * i + 1 + sq_op.n_ops]
+            ordered_indices[v] = 2 * i + sq_op.n_ops
+        dummies = [dummies_map[k] for k in sorted(dummies_map.keys(), key=lambda i: mo_space.index(i))]
+
+        # indices_sorted = [i for i in sq_op.cre_ops.indices] + [i for i in sq_op.ann_ops.indices]
+        # for i in sorted(minimal_indices_map.values()):
+        #     if i in sq_op.cre_ops.indices_set or i in sq_op.ann_ops.indices_set:
+        #         continue
+        #     indices_sorted += [i] * 2
+
+        # figure out permutation g and tensor bsgs
+        g = []
+        reverse_indices_map = dict()
+        for tensor in self.list_of_tensors:
+            for index in tensor.upper_indices + tensor.lower_indices:
+                i = minimal_indices_map[index]
+                g.append(ordered_indices[i])
+                reverse_indices_map[ordered_indices[i]] = i
+                ordered_indices[i] += 1
+
+        consider_sign = isinstance(self.list_of_tensors[0].upper_indices, IndicesAntisymmetric)
+        if consider_sign:
+            n_labels = len(g)
+            g += [n_labels, n_labels + 1]
+
+        # figure out equivalent tensors and bsgs
+        bsgs_list = []
+        tensor_counts = [len(list(group)) for k, group in groupby(self.list_of_tensors, key=lambda x: (x.name, x.n_body))]
+        shift = 0
+        for count in tensor_counts:
+            base, gens = tensor_bsgs(self.list_of_tensors[shift])
+            bsgs_list.append((base, gens, count, 0))
+            shift += count
+
+        # canonicalize indices
+        gc = canonicalize(Permutation(g), dummies, [0] * len(dummies), *bsgs_list)
+
+        # put canonicalized indices into replacement map
+        shift = 0
+        list_of_tensors = []
+        for tensor in self.list_of_tensors:
+            upper_indices = tensor.type_of_indices([reverse_indices_map[gc[i + shift]] for i in range(tensor.n_upper)])
+            shift += tensor.n_upper
+            lower_indices = tensor.type_of_indices([reverse_indices_map[gc[i + shift]] for i in range(tensor.n_lower)])
+            shift += tensor.n_lower
+
+            indices_pair = IndicesPair(upper_indices, lower_indices)
+            list_of_tensors.append(tensor.__class__(indices_pair, tensor.name, tensor.priority))
+
+        if consider_sign:
+            if g[-1] != gc[-1]:
+                sign *= -1
+
+        self._list_of_tensors = list_of_tensors
+        self._coeff *= sign
+        self._sq_op = sq_op
+        return self
 
     def generate_spin_cases_naive(self):
         """

@@ -179,11 +179,9 @@ class Term:
         :param cre: test creation operators if True, else test for annihilation operators
         :return: permutation partition of the indices P(ij/k/l) = [[i,j], [k], [l]]
         """
-        print(self)
         cre_ops = self.sq_op.cre_ops
         ann_ops = self.sq_op.ann_ops
         tensor_indices = [tensor.upper_indices + tensor.lower_indices for tensor in self.list_of_tensors]
-        print(tensor_indices)
 
         def exist_permute_atomic(ops, tensor_indices):
             if ops.size == 0:
@@ -197,7 +195,6 @@ class Term:
                     open_indices = [i for i in indices if i in ops.indices]
                     if len(open_indices) != 0:
                         processed.append(open_indices)
-                print(processed)
 
                 out = []
                 for indices in processed:
@@ -210,9 +207,8 @@ class Term:
                         else:
                             space = index.space
                             out.append(temp)
-                            temp = []
-                        out.append(temp)
-                print(out)
+                            temp = [index]
+                    out.append(temp)
                 return out
 
         return exist_permute_atomic(cre_ops, tensor_indices), exist_permute_atomic(ann_ops, tensor_indices)
@@ -327,10 +323,7 @@ class Term:
             upper_indices = tensor.type_of_indices([replacement[i] for i in tensor.upper_indices])
             lower_indices = tensor.type_of_indices([replacement[i] for i in tensor.lower_indices])
             indices_pair = IndicesPair(upper_indices, lower_indices)
-            if isinstance(tensor, ClusterAmplitude):
-                list_of_tensors.append(tensor.__class__(indices_pair, tensor.name, tensor.priority, tensor.excitation))
-            else:
-                list_of_tensors.append(tensor.__class__(indices_pair, tensor.name, tensor.priority))
+            list_of_tensors.append(tensor.__class__(indices_pair, tensor.name, tensor.priority))
         return list_of_tensors
 
     @staticmethod
@@ -711,17 +704,11 @@ class Term:
             ordered_indices[v] = 2 * i + sq_op.n_ops
         dummies = [dummies_map[k] for k in sorted(dummies_map.keys(), key=lambda i: mo_space.index(i))]
 
-        # indices_sorted = [i for i in sq_op.cre_ops.indices] + [i for i in sq_op.ann_ops.indices]
-        # for i in sorted(minimal_indices_map.values()):
-        #     if i in sq_op.cre_ops.indices_set or i in sq_op.ann_ops.indices_set:
-        #         continue
-        #     indices_sorted += [i] * 2
-
         # figure out permutation g and tensor bsgs
         g = []
         reverse_indices_map = dict()
         for tensor in self.list_of_tensors:
-            for index in tensor.upper_indices + tensor.lower_indices:
+            for index in tensor.lower_indices + tensor.upper_indices:
                 i = minimal_indices_map[index]
                 g.append(ordered_indices[i])
                 reverse_indices_map[ordered_indices[i]] = i
@@ -734,7 +721,8 @@ class Term:
 
         # figure out equivalent tensors and bsgs
         bsgs_list = []
-        tensor_counts = [len(list(group)) for k, group in groupby(self.list_of_tensors, key=lambda x: (x.name, x.n_body))]
+        tensor_counts = [len(list(group)) for k, group in groupby(self.list_of_tensors,
+                                                                  key=lambda x: (x.name, x.n_body))]
         shift = 0
         for count in tensor_counts:
             base, gens = tensor_bsgs(self.list_of_tensors[shift])
@@ -748,10 +736,10 @@ class Term:
         shift = 0
         list_of_tensors = []
         for tensor in self.list_of_tensors:
-            upper_indices = tensor.type_of_indices([reverse_indices_map[gc[i + shift]] for i in range(tensor.n_upper)])
-            shift += tensor.n_upper
             lower_indices = tensor.type_of_indices([reverse_indices_map[gc[i + shift]] for i in range(tensor.n_lower)])
             shift += tensor.n_lower
+            upper_indices = tensor.type_of_indices([reverse_indices_map[gc[i + shift]] for i in range(tensor.n_upper)])
+            shift += tensor.n_upper
 
             indices_pair = IndicesPair(upper_indices, lower_indices)
             list_of_tensors.append(tensor.__class__(indices_pair, tensor.name, tensor.priority))

@@ -34,7 +34,7 @@ def cluster_operator(k, start=0, excitation=True, name='T', scale_factor=1.0,
     first = particle if excitation else hole
     second = hole if excitation else particle
     indices_pair = make_indices_pair(second, first, indices_type)
-    tensor = ClusterAmplitude(indices_pair, name=name, excitation=excitation)
+    tensor = ClusterAmplitude(indices_pair, name=name)
     sq_op = make_sqop(first, second, indices_type)
     return Term([tensor], sq_op, scale_factor / coeff)
 
@@ -77,7 +77,7 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
             terms_k = []
             for sign, densities, sq_op in contractions:
                 term = Term(tensors + densities, sq_op, sign * coeff)
-                terms_k.append(term.canonicalize())
+                terms_k.append(term.canonicalize_sympy())
             out[k] = combine_terms(sorted(terms_k))
 
     return out

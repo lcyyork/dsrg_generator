@@ -340,23 +340,21 @@ class Kronecker(Tensor):
 
 @Tensor.register_subclass('cluster_amplitude')
 class ClusterAmplitude(Tensor):
-    def __init__(self, indices_pair, name='T', priority=1, excitation=True):
+    def __init__(self, indices_pair, name='T', priority=1):
         Tensor.__init__(self, indices_pair, name, priority)
         if not self.is_spin_conserving():
             raise ValueError("ClusterAmplitude should converse spin Ms.")
-        self._excitation = excitation
 
     @property
     def excitation(self):
         return self._excitation
 
     def ambit(self):
-        if self.excitation:
-            return super().ambit()
+        if any(['c' in space_relation[i.space.lower()] for i in self.lower_indices]) or \
+                any(['v' in space_relation[i.space.lower()] for i in self.upper_indices]):
+            return f"{self.name}{self.n_upper}{self.indices_pair.ambit(False)}"
         else:
-            if self.n_upper == self.n_lower:
-                return f"{self.name}{self.n_upper}{self.indices_pair.ambit(False)}"
-            return f"{self.name}_{self.n_upper}_{self.n_lower}{self.indices_pair.ambit(False)}"
+            return super().ambit()
 
     def canonicalize(self):
         """
@@ -364,7 +362,7 @@ class ClusterAmplitude(Tensor):
         :return: a tuple of (tensor with sorted indices, sign)
         """
         indices_pair, sign = self.indices_pair.canonicalize()
-        return ClusterAmplitude(indices_pair, self.name, self.priority, self.excitation), sign
+        return ClusterAmplitude(indices_pair, self.name, self.priority), sign
 
     def generate_spin_cases(self, particle_conserving=True):
         """
@@ -373,7 +371,7 @@ class ClusterAmplitude(Tensor):
         :return: a Tensor object labeled by spin-integrated indices
         """
         for indices_pair in self.indices_pair.generate_spin_cases(particle_conserving):
-            yield ClusterAmplitude(indices_pair, self.name, self.priority, self.excitation)
+            yield ClusterAmplitude(indices_pair, self.name, self.priority)
 
 
 @Tensor.register_subclass('Hamiltonian')

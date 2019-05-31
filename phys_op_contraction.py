@@ -1,8 +1,13 @@
 from copy import deepcopy
-from collections import defaultdict
+from collections import defaultdict, Iterable
 from itertools import combinations, product
 from math import factorial
 from sympy.utilities.iterables import multiset_permutations
+from sympy.physics.quantum import Operator, HermitianOperator, Commutator, Dagger
+from sympy.core.power import Pow
+from sympy.core.add import Add
+from sympy.core.mul import Mul
+
 from integer_partition import integer_partition
 from mo_space import space_relation
 from Indices import Indices
@@ -14,7 +19,7 @@ from sqop_contraction import generate_operator_contractions
 from Timer import Timer
 
 
-def Hamiltonian_operator(k, start=0, indices_type='spin-orbital'):
+def HamiltonianOperator(k, start=0, indices_type='spin-orbital'):
     coeff = factorial(k) ** 2
     r0, r1, r2 = start, start + k, start + 2 * k
     tensor = make_tensor_preset("Hamiltonian",
@@ -25,8 +30,8 @@ def Hamiltonian_operator(k, start=0, indices_type='spin-orbital'):
     return Term([tensor], sq_op, 1.0 / coeff)
 
 
-def cluster_operator(k, start=0, excitation=True, name='T', scale_factor=1.0,
-                     hole_label='h', particle_label='p', indices_type='spin-orbital'):
+def ClusterOperator(k, start=0, excitation=True, name='T', scale_factor=1.0,
+                    hole_label='h', particle_label='p', indices_type='spin-orbital'):
     coeff = factorial(k) ** 2
     r0, r1 = start, start + k
     hole = [f"{hole_label}{i}" for i in range(r0, r1)]
@@ -117,10 +122,10 @@ def combine_terms(terms, presorted=True):
 def commutator(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0, expand_hole=True):
     """
     Compute the nested commutator of terms, i.e. [[...[[term_0, term_1], term_2], ...], term_k].
-    :param terms: a list of terms.
+    :param terms: a list of terms
     :param max_cu: max level of cumulant
-    :param max_n_open: max number of open indices for contractions kept for return
-    :param min_n_open: min number of open indices for contractions kept for return
+    :param max_n_open: max number of open indices for contractions of each single commutator
+    :param min_n_open: min number of open indices for contractions of each single commutator
     :param scale_factor: a scaling factor for the results
     :param expand_hole: expand HoleDensity to Kronecker - Cumulant if True
     :return: a map of number of open indices to a list of contracted canonicalized Term objects
@@ -144,6 +149,90 @@ def commutator(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0, ex
             commutator_recursive([unchosen_terms[0]] + chosen_terms, unchosen_terms[1:], -sign)
 
     commutator_recursive(terms[:1], terms[1:], 1)
+
+    return out
+
+
+def sympy_nested_commutator_recursive(level, A, B):
+    """
+    Compute nested commutator of type [[...[[A, B], B], ...], B]
+    :param level: the level of nested commutator
+    :param A: Operator A
+    :param B: Operator B
+    :return: commutator of type Add
+    """
+    if level <= 1:
+        return Commutator(A, B)
+    for i in range(level)[::-1]:
+        return Commutator(sympy_nested_commutator_recursive(i, A, B), B)
+
+
+def nested_commutator_cc(nested_level, cluster_levels, max_cu=3, max_n_open=6, min_n_open=0,
+                         expand_hole=True, single_reference=False, unitary=False):
+    """
+    Compute the BCH nested commutator in coupled cluster theory.
+    :param nested_level: the level of nested commutator
+    :param cluster_levels: a list of integers for cluster operator, e.g., [1,2,3] for T1 + T2 + T3
+    :param max_cu: max value of cumulant allowed for contraction
+    :param max_n_open: the max number of open indices for contractions kept for return
+    :param min_n_open: the min number of open indices for contractions kept for return
+    :param expand_hole: expand HoleDensity to Kronecker minus Cumulant if True
+    :param single_reference: use single-reference amplitudes if True
+    :param unitary: use unitary formalism if True
+    :return: a map of number of open indices to a list of contracted canonicalized Term objects
+    """
+    if not isinstance(nested_level, int):
+        raise ValueError("Invalid nested_level (must be an integer)")
+    if not isinstance(cluster_levels, Iterable):
+        raise ValueError("Invalid type for cluster_operator")
+    if not all(isinstance(t, int) for t in cluster_levels):
+        raise ValueError("Invalid content in cluster_operator (must be all integers)")
+
+    scale_factor = 1.0/factorial(nested_level)
+    out = defaultdict(list)
+
+    hole_label = 'c' if single_reference else 'h'
+    particle_label = 'v' if single_reference else 'p'
+
+    # symbolic evaluate nested commutator
+    T = sum(Operator(f'T{i}') for i in cluster_levels)
+    H = HermitianOperator('H1') + HermitianOperator('H2')
+    A = T - Dagger(T) if unitary else T
+
+    for term in sympy_nested_commutator_recursive(nested_level, H, A).doit().expand().args:
+        coeff, tensors = term.as_coeff_mul()
+        factor = scale_factor * int(coeff)
+
+        tensor_names = []
+        for tensor in tensors:
+            if isinstance(tensor, Pow):
+                if isinstance(tensor.base, Dagger):
+                    tensor_names += ['X' + str(tensor.base.args[0])[1:]] * int(tensor.exp)
+                else:
+                    tensor_names += [str(tensor.base)] * int(tensor.exp)
+            else:
+                if isinstance(tensor, Dagger):
+                    tensor_names.append('X' + str(tensor.args[0])[1:])
+                else:
+                    tensor_names.append(str(tensor))
+
+        list_of_terms = []
+        start = 0
+        for name in tensor_names:
+            real_name, n_body = name[0], int(name[1:])
+            if real_name == 'T' or real_name == 'X':
+                list_of_terms.append(ClusterOperator(n_body, start=start, excitation=(real_name == 'T'),
+                                                     hole_label=hole_label, particle_label=particle_label))
+                start += n_body
+            else:
+                list_of_terms.append(HamiltonianOperator(n_body))
+
+        for n_open, terms in contract_terms(list_of_terms, max_cu, max_n_open, min_n_open,
+                                            factor, expand_hole).items():
+            out[n_open] += terms
+
+    for n_open, terms in out.items():
+        out[n_open] = combine_terms(terms, presorted=False)
 
     return out
 

@@ -50,8 +50,9 @@ def tensor_bsgs(tensor):
         elif tensor.n_body == 2:
             return riemann_bsgs
         else:
-            return list(range(5)), [Permutation(1, 2)(6, 7), Permutation(4, 5)(6, 7),
-                                    Permutation(7)(3, 4, 5), Permutation(7)(0, 3)(1, 4)(2, 5)]
+            return [0, 1, 3, 4], [Permutation(0, 1)(6, 7), Permutation(1, 2)(6, 7), Permutation(0, 2)(6, 7),
+                                  Permutation(3, 4)(6, 7), Permutation(4, 5)(6, 7), Permutation(3, 5)(6, 7),
+                                  Permutation(7)(0, 3)(1, 4)(2, 5)]
     else:
         raise ValueError("Spin-adapted bsgs not ready yet.")
         if tensor.n_body == 1:

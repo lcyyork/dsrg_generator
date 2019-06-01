@@ -197,7 +197,7 @@ class Term:
                         processed.append(open_indices)
 
                 out = []
-                for indices in processed:
+                for indices in sorted(processed):
                     indices = sorted(indices)
                     space = indices[0].space
                     temp = [indices[0]]
@@ -245,48 +245,55 @@ class Term:
             out = "$" + out + "$"
         return out
 
-    def ambit(self, name='C', ignore_permutations=False, declare_temp=True):
+    def ambit(self, name='C', ignore_permutations=False, init_temp=True, declared_temp=True):
         """
         Translate to ambit form, forced to add permutations if found.
         :param name: output tensor name
         :param ignore_permutations: ignore permutations printing
-        :param declare_temp: declare a temp tensor
+        :param init_temp: initialize a temp tensor
+        :param declared_temp: declare a temp tensor
         :return: ambit form (string) of the Term
         """
         if not isinstance(name, str):
             raise TypeError(f"Invalid ambit name, given '{name.__class__.__name__}', required 'str'.")
 
-        factor = factorial(self.sq_op.n_cre) * factorial(self.sq_op.n_ann)
+        sq_op = self.sq_op
+
+        factor = factorial(sq_op.n_cre) * factorial(sq_op.n_ann)
         p_cre, p_ann = self.exist_permute_format()
-        n_perm = self.sq_op.n_multiset_permutation(p_cre, p_ann)
+        n_perm = sq_op.n_multiset_permutation(p_cre, p_ann)
         coeff_str = self.format_coeff(self.coeff * factor / n_perm, 'ambit')
 
         tensors_str = " * ".join((tensor.ambit() for tensor in self.list_of_tensors))
+        real_name = f"{name}{sq_op.n_ann}" if sq_op.is_particle_conserving() else f"{name}_{sq_op.n_ann}_{sq_op.n_cre}"
 
-        if not self.sq_op.exist_permute_format(p_cre, p_ann):
-            lhs = f"{name}{self.sq_op.n_ann}" if self.sq_op.is_particle_conserving() \
-                else f"{name}_{self.sq_op.n_ann}_{self.sq_op.n_cre}"
-            lhs = f"{lhs}{self.sq_op.ambit(cre_first=False)}"
+        if not sq_op.exist_permute_format(p_cre, p_ann):
+            lhs = f"{real_name}{sq_op.ambit(cre_first=False)}"
             rhs = f"{coeff_str} * {tensors_str}"
             return lhs + " += " + rhs + ";\n"
         else:
-            space_str = "".join([i.space for i in self.sq_op.ann_ops] + [i.space for i in self.sq_op.cre_ops])
+            if not any([ignore_permutations, init_temp, declared_temp]):
+                return f'{real_name}{sq_op.ambit(cre_first=False)} += {coeff_str} * {tensors_str};\n'
 
             out = ''
-            if declare_temp and (not ignore_permutations):
+            if init_temp:
+                space_str = "".join([i.space for i in sq_op.ann_ops] + [i.space for i in sq_op.cre_ops])
                 out = f'temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {{"{space_str}"}});\n'
+                declared_temp = True
+
+            t_name = 'temp' if declared_temp else real_name
 
             if ignore_permutations:
-                return out + f'{name}{self.sq_op.ambit(cre_first=False)} += {coeff_str} * {tensors_str};\n'
-
-            out += f'temp{self.sq_op.ambit(cre_first=False)} += {coeff_str} * {tensors_str};\n'
-            temp_str = f'temp{self.sq_op.ambit(cre_first=False)}'
-            lhs_name = f"{name}{self.sq_op.n_ann}" if self.sq_op.is_particle_conserving() \
-                else f"{name}_{self.sq_op.n_ann}_{self.sq_op.n_cre}"
-
-            for sign, lhs_indices in self.sq_op.ambit_permute_format(p_cre, p_ann, cre_first=False):
-                lhs = f"{lhs_name}{lhs_indices}"
-                out += f"{lhs} {'+' if sign == 1 else '-'}= {temp_str};\n"
+                return out + f'{t_name}{sq_op.ambit(cre_first=False)} += {coeff_str} * {tensors_str};\n'
+            else:
+                if declared_temp:
+                    temp_indices = f'{sq_op.ambit(cre_first=False)}'
+                    out += f'temp{temp_indices} += {coeff_str} * {tensors_str};\n'
+                    for sign, lhs_indices in sq_op.ambit_permute_format(p_cre, p_ann, cre_first=False):
+                        out += f"{real_name}{lhs_indices} {'+' if sign == 1 else '-'}= temp{temp_indices};\n"
+                else:
+                    for sign, lhs_indices in sq_op.ambit_permute_format(p_cre, p_ann, cre_first=False):
+                        out += f"{real_name}{lhs_indices} {'+' if sign == 1 else '-'}= {coeff_str} * {tensors_str};\n"
 
             return out
 

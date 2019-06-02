@@ -93,12 +93,15 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
         sq_op = sq_ops_to_be_contracted[0] if len(sq_ops_to_be_contracted) == 1 else terms[0].sq_op
         out[sq_op.n_ops].append(Term(tensors, sq_op, coeff))
     else:
+        # start = timer()
         contracted = generate_operator_contractions(sq_ops_to_be_contracted, max_cu,
                                                     max_n_open, min_n_open, expand_hole)
+        # end = timer()
+        # print(f'contraction: {end - start:.6f}s ', end='')
         for k, contractions in contracted.items():
             n_contractions = len(contractions)
             print(n_contractions)
-            start = timer()
+            # start = timer()
 
             terms_k = list()
 
@@ -107,56 +110,47 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
                     terms_k.append(Term(tensors + densities, sq_op, sign * coeff).canonicalize_sympy())
             else:
                 with multiprocessing.Pool(n_process) as pool:
-                    # results = [pool.apply_async(multiprocessing_canonicalize_contractions, args=(i, contractions,
-                    #                                                                              tensors, coeff))
-                    #            for i in range(n_contractions)]
-                    # terms_k = [p.get() for p in results]
                     tasks = []
                     for sign, densities, sq_op in contractions:
                         tasks.append((multiprocessing_canonicalize_contractions,
                                       (tensors + densities, sq_op, sign * coeff)))
                     imap_unordered_it = pool.imap_unordered(calculatestar, tasks)
-                    for x in imap_unordered_it:
-                        terms_k.append(x)
+                    terms_k = [x for x in imap_unordered_it]
 
-            end = timer()
-            print(f'canonicalize: {end - start:.6f}s, ', end='')
-            start = timer()
-            out[k] = combine_terms(sorted(terms_k))
-            end = timer()
-            print(f'combine: {end - start:.6f}s')
+            # end = timer()
+            # print(f'canonicalize: {end - start:.6f}s, ', end='')
+            # start = timer()
+            out[k] = combine_terms(terms_k)
+            # end = timer()
+            # print(f'combine: {end - start:.6f}s')
 
     return out
 
 
-def combine_terms(terms, presorted=True):
+def combine_terms(terms):
     """
     Simplify the list of terms by combining similar terms.
     :param terms: a list of canonicalized Term objects
-    :param presorted: the list is treated as sorted list if True
     :return: a list of simplified Term objects
     """
     if not isinstance(terms, list):
         raise ValueError("terms should be a list of Term objects.")
 
-    if not presorted:
-        terms = sorted(terms)
-
     if len(terms) == 0:
         return []
 
-    out = [terms[0]]
-    for term in terms[1:]:
-        if term.almost_equal(out[-1]):
-            out[-1].coeff += term.coeff
-        else:
-            if abs(out[-1].coeff) < 1.0e-15:
-                out.pop()
-            out.append(term)
+    tensors_to_coeff = defaultdict(list)
+    tensors_to_term = dict()
 
-    if abs(out[-1].coeff) < 1.0e-15:
-        out.pop()
+    for term in terms:
+        name = " ".join(str(tensor) for tensor in term.list_of_tensors) + f" {term.sq_op}"
+        tensors_to_term[name] = term
+        tensors_to_coeff[name].append(term.coeff)
 
+    out = []
+    for name, term in tensors_to_term.items():
+        term.coeff = sum(tensors_to_coeff[name])
+        out.append(term)
     return sorted(out)
 
 
@@ -184,7 +178,7 @@ def nested_commutator_lct(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_fac
         if len(unchosen_terms) == 0:
             temp = contract_terms(chosen_terms, max_cu, max_n_open, min_n_open, sign * scale_factor, expand_hole)
             for n_open, _terms in temp.items():
-                out[n_open] = combine_terms(out[n_open] + _terms, presorted=False)
+                out[n_open] = combine_terms(out[n_open] + _terms)
         else:
             commutator_recursive(chosen_terms + [unchosen_terms[0]], unchosen_terms[1:], sign)
             commutator_recursive([unchosen_terms[0]] + chosen_terms, unchosen_terms[1:], -sign)
@@ -274,7 +268,7 @@ def nested_commutator_cc(nested_level, cluster_levels, max_cu=3, max_n_open=6, m
             out[n_open] += terms
 
     for n_open, terms in out.items():
-        out[n_open] = combine_terms(terms, presorted=False)
+        out[n_open] = combine_terms(terms)
 
     return out
 

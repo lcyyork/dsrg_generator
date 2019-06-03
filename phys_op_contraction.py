@@ -19,7 +19,7 @@ from IndicesPair import make_indices_pair
 from SQOperator import make_sqop, SecondQuantizedOperator
 from Tensor import make_tensor_preset, ClusterAmplitude
 from Term import Term
-from sqop_contraction import generate_operator_contractions
+from sqop_contraction import generate_operator_contractions, generate_operator_contractions_new
 from Timer import Timer
 
 
@@ -74,6 +74,7 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
     :return: a map of number of open indices to a list of contracted and canonicalized Term objects
     """
     out = defaultdict(list)
+    print(terms)
 
     if len(terms) == 0:
         raise ValueError("size of terms cannot be zero.")
@@ -93,15 +94,16 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
         sq_op = sq_ops_to_be_contracted[0] if len(sq_ops_to_be_contracted) == 1 else terms[0].sq_op
         out[sq_op.n_ops].append(Term(tensors, sq_op, coeff))
     else:
-        # start = timer()
-        contracted = generate_operator_contractions(sq_ops_to_be_contracted, max_cu,
-                                                    max_n_open, min_n_open, expand_hole)
-        # end = timer()
-        # print(f'contraction: {end - start:.6f}s ', end='')
+        start = timer()
+        contracted = generate_operator_contractions_new(sq_ops_to_be_contracted, max_cu,
+                                                    max_n_open, min_n_open, expand_hole, n_process)
+        end = timer()
+        print(f'contraction: {end - start:.6f}s ')
         for k, contractions in contracted.items():
             n_contractions = len(contractions)
             print(n_contractions)
-            # start = timer()
+
+            start = timer()
 
             terms_k = list()
 
@@ -117,12 +119,12 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
                     imap_unordered_it = pool.imap_unordered(calculatestar, tasks)
                     terms_k = [x for x in imap_unordered_it]
 
-            # end = timer()
-            # print(f'canonicalize: {end - start:.6f}s, ', end='')
-            # start = timer()
+            end = timer()
+            print(f'canonicalize: {end - start:.6f}s, ')
+            start = timer()
             out[k] = combine_terms(terms_k)
-            # end = timer()
-            # print(f'combine: {end - start:.6f}s')
+            end = timer()
+            print(f'combine: {end - start:.6f}s')
 
     return out
 
@@ -154,7 +156,8 @@ def combine_terms(terms):
     return sorted(out)
 
 
-def nested_commutator_lct(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0, expand_hole=True):
+def nested_commutator_lct(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0,
+                          expand_hole=True, n_process=1):
     """
     Compute the nested commutator of terms, i.e. [[...[[term_0, term_1], term_2], ...], term_k].
     :param terms: a list of terms
@@ -163,6 +166,7 @@ def nested_commutator_lct(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_fac
     :param min_n_open: min number of open indices for contractions of each single commutator
     :param scale_factor: a scaling factor for the results
     :param expand_hole: expand HoleDensity to Kronecker - Cumulant if True
+    :param n_process: number of processes launched for tensor canonicalization
     :return: a map of number of open indices to a list of contracted canonicalized Term objects
     """
     if len(terms) == 0:
@@ -176,7 +180,8 @@ def nested_commutator_lct(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_fac
 
     def commutator_recursive(chosen_terms, unchosen_terms, sign):
         if len(unchosen_terms) == 0:
-            temp = contract_terms(chosen_terms, max_cu, max_n_open, min_n_open, sign * scale_factor, expand_hole)
+            temp = contract_terms(chosen_terms, max_cu, max_n_open, min_n_open,
+                                  sign * scale_factor, expand_hole, n_process)
             for n_open, _terms in temp.items():
                 out[n_open] = combine_terms(out[n_open] + _terms)
         else:
@@ -300,7 +305,7 @@ def print_terms_ambit(results):
             print(term.ambit(ignore_permutations=(i != i_last), init_temp=(i == 0), declared_temp=True))
 
 
-def print_term_ambit_symmetric(results):
+def print_terms_ambit_symmetric(results):
     """
     Print contracted results in ambit format assuming results are symmetric (i.e. block ccvv = block vvcc).
     :param results: the sorted output from operator contractions
@@ -308,9 +313,9 @@ def print_term_ambit_symmetric(results):
     block_repr = sort_contraction_results(results)
     sym_blocks = set()
     for block, terms in sorted(block_repr.items(), key=lambda pair: (len(pair[0][0]), len(pair[0][1]), pair[0][0])):
-        if block in sym_blocks:
+        if block[0] in sym_blocks:
             continue
-        half1, half2 = block[:len(block)//2], block[len(block)//2:]
+        half1, half2 = block[0][:len(block)//2], block[0][len(block)//2:]
         sym_blocks.add(half2 + half1)
 
         i_last = len(terms) - 1

@@ -1,6 +1,10 @@
+import multiprocessing
+import sys
+from joblib import Parallel, delayed
 from copy import deepcopy
 from collections import defaultdict
 from itertools import combinations, product
+from sympy.combinatorics import Permutation
 from sympy.utilities.iterables import multiset_permutations
 from integer_partition import integer_partition
 from mo_space import space_relation
@@ -8,6 +12,7 @@ from Indices import Indices, IndicesSpinOrbital
 from IndicesPair import IndicesPair
 from SQOperator import SecondQuantizedOperator
 from Tensor import make_tensor_preset, HoleDensity, Kronecker, Cumulant
+from timeit import default_timer as timer
 
 
 def generate_elementary_contractions(ops_list, max_cu=3):
@@ -137,23 +142,33 @@ def generate_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=
     :return: a map of number of open indices to contractions
     """
     # generate elementary contractions
+    start = timer()
     elementary_contractions = generate_elementary_contractions(ops_list, max_cu)
+    end = timer()
+    print(f"generate elementary contractions: {end - start:.6f}s, number of elementary contractions: {len(elementary_contractions)}")
     n_ele_con = len(elementary_contractions)
 
     # generate incompatible contractions between elementary contractions
     # the list index of elementary_contractions is saved
+    start = timer()
     incompatible_elementary = {i: set() for i in range(n_ele_con)}
     for i, ele_i in enumerate(elementary_contractions):
         for j, ele_j in enumerate(elementary_contractions[i + 1:], i + 1):
             if ele_i.any_overlapped_indices(ele_j):
                 incompatible_elementary[i].add(j)
                 incompatible_elementary[j].add(i)
+    end = timer()
+    print(f"incompatible elementary contractions: {end - start:.6f}s")
 
     # backtracking (similar to generating sub-lists)
+    start = timer()
     contractions = []
     composite_contractions_backtracking(set(range(n_ele_con)), set(), incompatible_elementary, contractions)
+    end = timer()
+    print(f"backtracking contractions: {end - start:.6f}s")
 
     # translate contractions to readable form
+    start = timer()
     results = defaultdict(list)
 
     base_order_indices = Indices([])
@@ -196,6 +211,285 @@ def generate_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=
             sign = (-1) ** (base_order_indices.count_permutations(Indices(current_order)))
             for _sign, list_of_densities in sign_densities_pairs:
                 results[n_sq_ops_open].append((sign * _sign, list_of_densities, sq_op))
+    end = timer()
+    print(f"translate contractions: {end - start:.6f}s")
+
+    return results
+
+
+def calculate(func, args):
+    return func(*args)
+
+
+def calculatestar(args):
+    return calculate(*args)
+
+
+def process_contractions(contraction, elementary_contractions, expand_hole,
+                         base_order_map, upper_indices_set, lower_indices_set):
+    start = timer()
+    list_of_densities = []
+    current_order = []
+    upper_contracted, lower_contracted = set(), set()
+
+    xxx = timer()
+    for i in contraction:
+        ele_con = elementary_contractions[i]
+
+        list_of_densities.append(ele_con)
+
+        # creation (left) or annihilation (right)
+        left, right = ele_con.upper_indices, ele_con.lower_indices
+        upper_contracted.update(left.indices)
+        lower_contracted.update(right.indices)
+
+        if isinstance(ele_con, HoleDensity):
+            left, right = right, left
+
+        current_order += left.indices + right.indices[::-1]
+    print(f"loop: {timer() - xxx: .6f}")
+
+    # expand hole densities to delta - lambda_1
+    xxx = timer()
+    sign_densities_pairs = expand_hole_densities(list_of_densities) if expand_hole else [(1, list_of_densities)]
+    print(f"expand: {timer() - xxx: .6f}")
+
+    # sort the open indices
+    xxx = timer()
+    n_open = len(base_order_map) - len(current_order)
+    if n_open != 0:
+        open_upper_indices = IndicesSpinOrbital(sorted(upper_indices_set - upper_contracted))
+        open_lower_indices = IndicesSpinOrbital(sorted(lower_indices_set - lower_contracted))
+        current_order += open_upper_indices.indices + open_lower_indices.indices[::-1]
+    else:
+        open_upper_indices, open_lower_indices = IndicesSpinOrbital([]), IndicesSpinOrbital([])
+    sq_op = SecondQuantizedOperator(IndicesPair(open_upper_indices, open_lower_indices))
+    print(f"sqop: {timer() - xxx: .6f}")
+
+    # determine sign
+    xxx = timer()
+    sign = (-1) ** Permutation([base_order_map[i] for i in current_order]).inversions()
+    print(f"perm: {timer() - xxx: .6f}")
+    print(f"process contraction: {timer() - start:.6f}s")
+
+    return n_open, [(sign * _sign, list_of_densities, sq_op) for _sign, list_of_densities in sign_densities_pairs]
+
+
+def multiprocess_contractions(list_of_densities, n_open, expand_hole,
+                              base_order_map, upper_indices_set, lower_indices_set):
+    current_order = list()
+    for dens in list_of_densities:
+        left, right = dens.upper_indices, dens.lower_indices
+        if isinstance(dens, HoleDensity):
+            left, right = right, left
+        current_order += left.indices + right.indices[::-1]
+
+    if n_open != 0:
+        contracted = set(current_order)
+        open_upper_indices = IndicesSpinOrbital(sorted(upper_indices_set - contracted))
+        open_lower_indices = IndicesSpinOrbital(sorted(lower_indices_set - contracted))
+        current_order += open_upper_indices.indices + open_lower_indices.indices[::-1]
+    else:
+        open_upper_indices, open_lower_indices = IndicesSpinOrbital([]), IndicesSpinOrbital([])
+    sq_op = SecondQuantizedOperator(IndicesPair(open_upper_indices, open_lower_indices))
+
+    sign = (-1) ** Permutation([base_order_map[i] for i in current_order]).inversions()
+    sign_densities_pairs = expand_hole_densities(list_of_densities) if expand_hole else [(1, list_of_densities)]
+    return n_open, [(sign * _sign, list_of_densities, sq_op) for _sign, list_of_densities in sign_densities_pairs]
+
+
+def generate_operator_contractions_new(ops_list, max_cu=3, max_n_open=6, min_n_open=0,
+                                       expand_hole=True, n_process=1):
+    """
+    Generate operator contractions for a list of SQOperator.
+    :param ops_list: a list of SecondQuantizedOperator to be contracted
+    :param max_cu: max level of cumulant
+    :param max_n_open: max number of open indices for contractions kept for return
+    :param min_n_open: min number of open indices for contractions kept for return
+    :param expand_hole: expand hole density to Kronecker delta and 1-cumulant if True
+    :return: a map of number of open indices to contractions
+    """
+    # original ordering of the second-quantized operators
+    base_order_indices = []
+    upper_indices_set, lower_indices_set = set(), set()
+    for sq_op in ops_list:
+        base_order_indices += sq_op.cre_ops.indices + sq_op.ann_ops.indices[::-1]
+        upper_indices_set.update(sq_op.cre_ops.indices)
+        lower_indices_set.update(sq_op.ann_ops.indices)
+    n_indices = len(base_order_indices)
+    base_order_map = {v: i for i, v in enumerate(base_order_indices)}
+
+    # generate elementary contractions
+    start = timer()
+    elementary_contractions = generate_elementary_contractions(ops_list, max_cu)
+    end = timer()
+    n_ele_con = len(elementary_contractions)
+    if n_ele_con > 1000:
+        sys.setrecursionlimit(n_ele_con)
+    print(f"generate elementary contractions: {end - start:.6f}s, number of elementary contractions: {n_ele_con}")
+
+    # generate incompatible contractions between elementary contractions
+    # the list index of elementary_contractions is saved
+    start = timer()
+    incompatible_elementary = defaultdict(set)
+    for i, ele_i in enumerate(elementary_contractions):
+        for j, ele_j in enumerate(elementary_contractions[i + 1:], i + 1):
+            if ele_i.any_overlapped_indices(ele_j):
+                incompatible_elementary[i].add(j)
+                incompatible_elementary[j].add(i)
+    end = timer()
+    print(f"incompatible elementary contractions: {end - start:.6f}s")
+
+    # backtracking (similar to generating sub-lists)
+    start = timer()
+    contractions = []
+    composite_contractions_backtracking(set(range(n_ele_con)), set(), incompatible_elementary, contractions)
+    end = timer()
+    print(f"backtracking contractions: {end - start:.6f}s")
+    print(f"number of contractions: {len(contractions)}")
+
+    # output
+    results = defaultdict(list)
+
+    start = timer()
+    if n_process == 1:
+        cu1 = (max_cu == 1)
+        for con in contractions:
+            if cu1:
+                n_open = n_indices - 2 * len(con)
+            else:
+                n_open = n_indices - 2 * sum(elementary_contractions[i].n_upper for i in con)
+            if not (min_n_open <= n_open <= max_n_open):
+                continue
+
+            list_of_densities = []
+            current_order = []
+
+            for i in con:
+                ele_con = elementary_contractions[i]
+
+                list_of_densities.append(ele_con)
+
+                # creation (left) or annihilation (right)
+                left, right = ele_con.upper_indices, ele_con.lower_indices
+                if isinstance(ele_con, HoleDensity):
+                    left, right = right, left
+                current_order += left.indices + right.indices[::-1]
+
+            # expand hole densities to delta - lambda_1
+            sign_densities_pairs = expand_hole_densities(list_of_densities) if expand_hole else [(1, list_of_densities)]
+
+            # sort the open indices
+            if n_open != 0:
+                contracted = set(current_order)
+                open_upper_indices = IndicesSpinOrbital(sorted(upper_indices_set - contracted))
+                open_lower_indices = IndicesSpinOrbital(sorted(lower_indices_set - contracted))
+                current_order += open_upper_indices.indices + open_lower_indices.indices[::-1]
+            else:
+                open_upper_indices, open_lower_indices = IndicesSpinOrbital([]), IndicesSpinOrbital([])
+            sq_op = SecondQuantizedOperator(IndicesPair(open_upper_indices, open_lower_indices))
+
+            # determine sign
+            sign = (-1) ** Permutation([base_order_map[i] for i in current_order]).inversions()
+
+            results[n_open] += [(sign * _s, list_of_densities, sq_op) for _s, list_of_densities in sign_densities_pairs]
+    else:
+        # filter contractions
+        translated = list()
+        if max_cu == 1:
+            for con in contractions:
+                n_open = n_indices - 2 * len(con)
+                if not (min_n_open <= n_open <= max_n_open):
+                    continue
+                translated.append((n_open, [elementary_contractions[i] for i in con]))
+        else:
+            for con in contractions:
+                n_open = n_indices - 2 * sum(elementary_contractions[i].n_upper for i in con)
+                if not (min_n_open <= n_open <= max_n_open):
+                    continue
+                translated.append((n_open, [elementary_contractions[i] for i in con]))
+
+        # xxx = Parallel(n_jobs=n_process)(delayed(multiprocess_contractions)(list_of_densities, n_open, expand_hole,
+        #                                                   base_order_map, upper_indices_set, lower_indices_set) for n_open, list_of_densities in translated)
+        # for n_open, sign_densities_ops in xxx:
+        #     results[n_open] += sign_densities_ops
+
+        # with multiprocessing.Pool(n_process) as pool:
+        #     tasks = list()
+        #     for n_open, list_of_densities in translated:
+        #         tasks.append((multiprocess_contractions, (list_of_densities, n_open, expand_hole,
+        #                                                   base_order_map, upper_indices_set, lower_indices_set)))
+        #     imap_unordered_it = pool.imap_unordered(calculatestar, tasks)
+        #     for n_open, sign_densities_ops in imap_unordered_it:
+        #         results[n_open] += sign_densities_ops
+
+        # if n_process == 1:
+        #     for contraction in contractions:
+        #         # contraction is a list of indices of elementary contractions
+        #         n_sq_ops_open, sign_densities_ops = process_contractions(contraction, elementary_contractions, expand_hole,
+        #                                                                  base_order_map,
+        #                                                                  upper_indices_set, lower_indices_set)
+        #         results[n_sq_ops_open] += sign_densities_ops
+        # else:
+        # xxx = Parallel(n_jobs=n_process)(delayed(process_contractions)(con, elementary_contractions,
+        #                                                                expand_hole, base_order_map,
+        #                                                                upper_indices_set, lower_indices_set) for con in contractions)
+        # for n_open, sign_densities_ops in xxx:
+        #     results[n_open] += sign_densities_ops
+        # manager = multiprocessing.Manager()
+        # elementary_contractions = manager.list(elementary_contractions)
+        # # base_order_map = manager.dict(*base_order_map)
+        # with multiprocessing.Pool(n_process) as pool:
+        #     tasks = []
+        #     for con in contractions:
+        #         tasks.append((process_contractions,
+        #                       (con, elementary_contractions, expand_hole,
+        #                        base_order_map, upper_indices_set, lower_indices_set)))
+        #     imap_unordered_it = pool.imap_unordered(calculatestar, tasks)
+        #     for n_open, sign_densities_ops in imap_unordered_it:
+        #         results[n_open] += sign_densities_ops
+    # for contraction in contractions:
+    #
+    #     n_sq_ops_open = n_indices - sum([elementary_contractions[i].size for i in contraction])
+    #
+    #     if min_n_open <= n_sq_ops_open <= max_n_open:
+    #
+    #         list_of_densities = []
+    #         current_order = []
+    #         upper_contracted, lower_contracted = set(), set()
+    #
+    #         for i in contraction:
+    #             ele_con = elementary_contractions[i]
+    #
+    #             list_of_densities.append(ele_con)
+    #
+    #             # creation (left) or annihilation (right)
+    #             left, right = ele_con.upper_indices, ele_con.lower_indices
+    #             upper_contracted.update(left.indices)
+    #             lower_contracted.update(right.indices)
+    #
+    #             if isinstance(ele_con, HoleDensity):
+    #                 left, right = right, left
+    #
+    #             current_order += left.indices + right.indices[::-1]
+    #
+    #         # expand hole densities to delta - lambda_1
+    #         sign_densities_pairs = expand_hole_densities(list_of_densities) if expand_hole else [(1, list_of_densities)]
+    #
+    #         # sort the open indices
+    #         open_upper_indices, open_lower_indices = IndicesSpinOrbital([]), IndicesSpinOrbital([])
+    #         if n_sq_ops_open != 0:
+    #             open_upper_indices = IndicesSpinOrbital(sorted(upper_indices_set - upper_contracted))
+    #             open_lower_indices = IndicesSpinOrbital(sorted(lower_indices_set - lower_contracted))
+    #             current_order += open_upper_indices.indices + open_lower_indices.indices[::-1]
+    #         sq_op = SecondQuantizedOperator(IndicesPair(open_upper_indices, open_lower_indices))
+    #
+    #         # determine sign and push to results
+    #         sign = (-1) ** Permutation([base_order_map[i] for i in current_order]).inversions()
+    #         for _sign, list_of_densities in sign_densities_pairs:
+    #             results[n_sq_ops_open].append((sign * _sign, list_of_densities, sq_op))
+    end = timer()
+    print(f"translate contractions: {end - start:.6f}s")
 
     return results
 
@@ -231,8 +525,6 @@ def expand_hole_densities(list_of_tensors):
     :param list_of_tensors: a list of Tensor objects
     :return: generate tuples of (sign, expanded Tensor objects)
     """
-    out = []
-
     good_tensors, hole_densities = [], []
     for tensor in list_of_tensors:
         hole_densities.append(tensor) if isinstance(tensor, HoleDensity) else good_tensors.append(tensor)

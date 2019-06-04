@@ -111,7 +111,7 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
                 for sign, densities, sq_op in contractions:
                     terms_k.append(Term(tensors + densities, sq_op, sign * coeff).canonicalize_sympy())
             else:
-                with multiprocessing.Pool(n_process) as pool:
+                with multiprocessing.Pool(n_process, maxtasksperchild=1000) as pool:
                     tasks = []
                     for sign, densities, sq_op in contractions:
                         tasks.append((multiprocessing_canonicalize_contractions,

@@ -301,40 +301,40 @@ def generate_operator_contractions_new(ops_list, max_cu=3, max_n_open=6, min_n_o
     base_order_map = {v: i for i, v in enumerate(base_order_indices)}
 
     # generate elementary contractions
-    start = timer()
+    # start = timer()
     elementary_contractions = generate_elementary_contractions(ops_list, max_cu)
-    end = timer()
+    # end = timer()
     n_ele_con = len(elementary_contractions)
     if n_ele_con > 1000:
         sys.setrecursionlimit(n_ele_con)
-    print(f"generate elementary contractions: {end - start:.6f}s, number of elementary contractions: {n_ele_con}")
+    # print(f"generate elementary contractions: {end - start:.6f}s, number of elementary contractions: {n_ele_con}")
 
     # generate incompatible contractions between elementary contractions
     # the list index of elementary_contractions is saved
-    start = timer()
+    # start = timer()
     incompatible_elementary = defaultdict(set)
     for i, ele_i in enumerate(elementary_contractions):
         for j, ele_j in enumerate(elementary_contractions[i + 1:], i + 1):
             if ele_i.any_overlapped_indices(ele_j):
                 incompatible_elementary[i].add(j)
                 incompatible_elementary[j].add(i)
-    end = timer()
-    print(f"incompatible elementary contractions: {end - start:.6f}s")
+    # end = timer()
+    # print(f"incompatible elementary contractions: {end - start:.6f}s")
 
     # backtracking (similar to generating sub-lists)
-    start = timer()
+    # start = timer()
     contractions = []
     composite_contractions_backtracking(set(range(n_ele_con)), set(), incompatible_elementary, contractions,
                                         0, elementary_contractions, (n_indices - max_n_open, n_indices - min_n_open))
-    end = timer()
+    # end = timer()
     n_contractions = len(contractions)
-    print(f"backtracking contractions: {end - start:.6f}s")
-    print(f"number of contractions: {n_contractions}")
+    # print(f"backtracking contractions: {end - start:.6f}s")
+    # print(f"number of contractions: {n_contractions}")
 
     # output
     results = list()
 
-    start = timer()
+    # start = timer()
     if n_process == 1 or n_contractions < batch_size:
         results = processing_contractions(contractions, elementary_contractions, n_indices, expand_hole,
                                           base_order_map, upper_indices_set, lower_indices_set)
@@ -361,8 +361,8 @@ def generate_operator_contractions_new(ops_list, max_cu=3, max_n_open=6, min_n_o
                                base_order_map, upper_indices_set, lower_indices_set)))
             for con in pool.imap_unordered(calculatestar, tasks):
                 results += con
-    end = timer()
-    print(f"translate contractions: {end - start:.6f}s")
+    # end = timer()
+    # print(f"translate contractions: {end - start:.6f}s")
 
     return results
 

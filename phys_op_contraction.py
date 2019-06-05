@@ -73,7 +73,7 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
     :return: a list of contracted and canonicalized Term objects
     """
     out = list()
-    print(terms)
+    # print(terms)
 
     if len(terms) == 0:
         raise ValueError("size of terms cannot be zero.")
@@ -93,16 +93,18 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
         sq_op = sq_ops_to_be_contracted[0] if len(sq_ops_to_be_contracted) == 1 else terms[0].sq_op
         out[sq_op.n_ops].append(Term(tensors, sq_op, coeff))
     else:
-        start = timer()
+        # start = timer()
         contractions = generate_operator_contractions_new(sq_ops_to_be_contracted, max_cu,
                                                     max_n_open, min_n_open, expand_hole, n_process)
-        end = timer()
-        print(f'contraction: {end - start:.6f}s ')
+        # end = timer()
+        # print(f'contraction: {end - start:.6f}s ')
 
         n_contractions = len(contractions)
-        print(n_contractions)
+        if n_contractions == 0:
+            return []
+        print(f'number of contractions: {n_contractions}')
 
-        start = timer()
+        # start = timer()
 
         terms_k = list()
 
@@ -119,12 +121,12 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
                 imap_unordered_it = pool.imap_unordered(calculatestar, tasks)
                 terms_k = [x for x in imap_unordered_it]
 
-        end = timer()
-        print(f'canonicalize: {end - start:.6f}s, ')
-        start = timer()
+        # end = timer()
+        # print(f'canonicalize: {end - start:.6f}s, ')
+        # start = timer()
         out = combine_terms(terms_k)
-        end = timer()
-        print(f'combine: {end - start:.6f}s')
+        # end = timer()
+        # print(f'combine: {end - start:.6f}s')
 
     return out
 

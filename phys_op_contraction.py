@@ -1,6 +1,5 @@
 import multiprocessing
 from threading import Thread
-from joblib import Parallel, delayed
 from copy import deepcopy
 from collections import defaultdict, Iterable
 from itertools import combinations, product
@@ -71,9 +70,9 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
     :param scale_factor: a scaling factor for the results
     :param expand_hole: expand HoleDensity to Kronecker - Cumulant if True
     :param n_process: number of processes launched for tensor canonicalization
-    :return: a map of number of open indices to a list of contracted and canonicalized Term objects
+    :return: a list of contracted and canonicalized Term objects
     """
-    out = defaultdict(list)
+    out = list()
     print(terms)
 
     if len(terms) == 0:
@@ -95,36 +94,37 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
         out[sq_op.n_ops].append(Term(tensors, sq_op, coeff))
     else:
         start = timer()
-        contracted = generate_operator_contractions_new(sq_ops_to_be_contracted, max_cu,
+        contractions = generate_operator_contractions_new(sq_ops_to_be_contracted, max_cu,
                                                     max_n_open, min_n_open, expand_hole, n_process)
         end = timer()
         print(f'contraction: {end - start:.6f}s ')
-        for k, contractions in contracted.items():
-            n_contractions = len(contractions)
-            print(n_contractions)
 
-            start = timer()
+        n_contractions = len(contractions)
+        print(n_contractions)
 
-            terms_k = list()
+        start = timer()
 
-            if n_process == 1:
+        terms_k = list()
+
+        if n_process == 1:
+            for sign, densities, sq_op in contractions:
+                terms_k.append(Term(tensors + densities, sq_op, sign * coeff).canonicalize_sympy())
+        else:
+            n_process = min(n_process, multiprocessing.cpu_count())
+            with multiprocessing.Pool(n_process, maxtasksperchild=1000) as pool:
+                tasks = []
                 for sign, densities, sq_op in contractions:
-                    terms_k.append(Term(tensors + densities, sq_op, sign * coeff).canonicalize_sympy())
-            else:
-                with multiprocessing.Pool(n_process, maxtasksperchild=1000) as pool:
-                    tasks = []
-                    for sign, densities, sq_op in contractions:
-                        tasks.append((multiprocessing_canonicalize_contractions,
-                                      (tensors + densities, sq_op, sign * coeff)))
-                    imap_unordered_it = pool.imap_unordered(calculatestar, tasks)
-                    terms_k = [x for x in imap_unordered_it]
+                    tasks.append((multiprocessing_canonicalize_contractions,
+                                  (tensors + densities, sq_op, sign * coeff)))
+                imap_unordered_it = pool.imap_unordered(calculatestar, tasks)
+                terms_k = [x for x in imap_unordered_it]
 
-            end = timer()
-            print(f'canonicalize: {end - start:.6f}s, ')
-            start = timer()
-            out[k] = combine_terms(terms_k)
-            end = timer()
-            print(f'combine: {end - start:.6f}s')
+        end = timer()
+        print(f'canonicalize: {end - start:.6f}s, ')
+        start = timer()
+        out = combine_terms(terms_k)
+        end = timer()
+        print(f'combine: {end - start:.6f}s')
 
     return out
 
@@ -149,9 +149,11 @@ def combine_terms(terms):
         tensors_to_term[name] = term
         tensors_to_coeff[name].append(term.coeff)
 
-    out = []
+    out = list()
     for name, term in tensors_to_term.items():
         term.coeff = sum(tensors_to_coeff[name])
+        if abs(term.coeff) < 1.0e-15:
+            continue
         out.append(term)
     return sorted(out)
 
@@ -173,24 +175,21 @@ def nested_commutator_lct(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_fac
         raise ValueError("size of terms cannot be zero.")
 
     if len(terms) == 1:
-        term = terms[0]
-        return {term.sq_op.n_ops: [term]}
+        return terms
 
-    out = defaultdict(list)
-
-    def commutator_recursive(chosen_terms, unchosen_terms, sign):
+    def commutator_recursive(chosen_terms, unchosen_terms, sign, temp_out):
         if len(unchosen_terms) == 0:
-            temp = contract_terms(chosen_terms, max_cu, max_n_open, min_n_open,
-                                  sign * scale_factor, expand_hole, n_process)
-            for n_open, _terms in temp.items():
-                out[n_open] = combine_terms(out[n_open] + _terms)
+            terms_local = contract_terms(chosen_terms, max_cu, max_n_open, min_n_open,
+                                         sign * scale_factor, expand_hole, n_process)
+            temp_out += combine_terms(terms_local)
         else:
-            commutator_recursive(chosen_terms + [unchosen_terms[0]], unchosen_terms[1:], sign)
-            commutator_recursive([unchosen_terms[0]] + chosen_terms, unchosen_terms[1:], -sign)
+            commutator_recursive(chosen_terms + [unchosen_terms[0]], unchosen_terms[1:], sign, temp_out)
+            commutator_recursive([unchosen_terms[0]] + chosen_terms, unchosen_terms[1:], -sign, temp_out)
 
-    commutator_recursive(terms[:1], terms[1:], 1)
+    out = list()
+    commutator_recursive(terms[:1], terms[1:], 1, out)
 
-    return out
+    return combine_terms(out)
 
 
 def sympy_nested_commutator_recursive(level, A, B):
@@ -230,7 +229,7 @@ def nested_commutator_cc(nested_level, cluster_levels, max_cu=3, max_n_open=6, m
         raise ValueError("Invalid content in cluster_operator (must be all integers)")
 
     scale_factor = 1.0/factorial(nested_level)
-    out = defaultdict(list)
+    out = list()
 
     hole_label = 'c' if single_reference else 'h'
     particle_label = 'v' if single_reference else 'p'
@@ -268,68 +267,110 @@ def nested_commutator_cc(nested_level, cluster_levels, max_cu=3, max_n_open=6, m
             else:
                 list_of_terms.append(HamiltonianOperator(n_body))
 
-        for n_open, terms in contract_terms(list_of_terms, max_cu, max_n_open, min_n_open,
-                                            factor, expand_hole, n_process).items():
-            out[n_open] += terms
+        out += contract_terms(list_of_terms, max_cu, max_n_open, min_n_open, factor, expand_hole, n_process)
 
-    for n_open, terms in out.items():
-        out[n_open] = combine_terms(terms)
-
-    return out
+    return combine_terms(out)
 
 
-def sort_contraction_results(results):
+def sort_contraction_results(terms):
     """
     Sort contraction results to blocks of operators and permutations.
-    :param results: the sorted output from operator contractions
+    :param terms: a list of terms computed from operator contractions
     :return: a dictionary of terms with (space, permutation) being the key
     """
     out = defaultdict(list)
-    for n_open, terms in results.items():
-        for term in terms:
-            space_str = "".join([i.space for i in term.sq_op.ann_ops] + [i.space for i in term.sq_op.cre_ops])
-            n_perm, perm_str, sq_op_str = term.sq_op.latex_permute_format(*term.exist_permute_format())
-            out[(space_str, perm_str)].append(term)
+    for term in terms:
+        space_str = "".join([i.space for i in term.sq_op.ann_ops] + [i.space for i in term.sq_op.cre_ops])
+        n_perm, perm_str, sq_op_str = term.sq_op.latex_permute_format(*term.exist_permute_format())
+        out[(space_str, perm_str)].append(term)
     return out
 
 
-def print_terms_ambit(results):
+def print_terms_ambit(input_terms):
     """
     Print contracted results in ambit format.
-    :param results: the sorted output from operator contractions
+    :param input_terms: a list of terms computed from operator contractions
     """
-    block_repr = sort_contraction_results(results)
+    block_repr = sort_contraction_results(input_terms)
     for k, terms in sorted(block_repr.items(), key=lambda pair: (len(pair[0][0]), len(pair[0][1]), pair[0][0])):
         i_last = len(terms) - 1
         for i, term in enumerate(terms):
             print(term.ambit(ignore_permutations=(i != i_last), init_temp=(i == 0), declared_temp=True))
 
 
-def print_terms_ambit_symmetric(results):
+def print_terms_ambit_symmetric(input_terms):
     """
     Print contracted results in ambit format assuming results are symmetric (i.e. block ccvv = block vvcc).
-    :param results: the sorted output from operator contractions
+    :param input_terms: a list of terms computed from operator contractions
     """
-    block_repr = sort_contraction_results(results)
+    block_repr = sort_contraction_results(input_terms)
     sym_blocks = set()
-    for block, terms in sorted(block_repr.items(), key=lambda pair: (len(pair[0][0]), len(pair[0][1]), pair[0][0])):
-        if block[0] in sym_blocks:
+    for block_p, terms in sorted(block_repr.items(), key=lambda pair: (len(pair[0][0]), len(pair[0][1]), pair[0][0])):
+        block, perm = block_p
+        if block in sym_blocks:
             continue
-        half1, half2 = block[0][:len(block)//2], block[0][len(block)//2:]
+        half1, half2 = block[:len(block)//2], block[len(block)//2:]
         sym_blocks.add(half2 + half1)
+        scale = 0.5 if half1 == half2 else 1.0
 
         i_last = len(terms) - 1
         for i, term in enumerate(terms):
+            term.coeff *= scale
             print(term.ambit(ignore_permutations=(i != i_last), init_temp=(i == 0), declared_temp=True))
+            term.coeff /= scale
 
 
-def save_terms_ambit(results, full_path):
+def save_terms_ambit(input_terms, full_path, func_name):
     """
     Save the contracted results to C++ file.
-    :param results: the output from operator contractions
+    :param input_terms: a list of terms computed from operator contractions
     :param full_path: the full path of the file name
+    :param func_name: the name of function
     """
-    return
+    prefix = f"""void MRDSRG_SO::{func_name}(double factor, BlockedTensor& H1, BlockedTensor& H2,
+                                   BlockedTensor& T1, BlockedTensor& T2, double& C0, BlockedTensor& C1,
+                                   BlockedTensor& C2) {{
+    C0 = 0.0;
+    C1.zero();
+    C2.zero();
+    BlockedTensor temp;""" + "\n" * 2
+
+    suffix = """
+    // scale by factor
+    C0 *= factor;
+    C1.scale(factor);
+    C2.scale(factor);
+
+    // add T dagger
+    C0 *= 2.0;
+    temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {"gg"});
+    temp["pq"] = C1["pq"];
+    C1["pq"] += temp["qp"];
+    temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {"gggg"});
+    temp["pqrs"] = C2["pqrs"];
+    C2["pqrs"] += temp["rspq"];""" + "\n}"
+
+    with open(full_path, 'w') as w:
+        w.write(prefix)
+
+        block_repr = sort_contraction_results(input_terms)
+        sym_blocks = set()
+        for block_p, terms in sorted(block_repr.items(),
+                                     key=lambda pair: (len(pair[0][0]), len(pair[0][1]), pair[0][0])):
+            block, perm = block_p
+            if block in sym_blocks:
+                continue
+            half1, half2 = block[:len(block) // 2], block[len(block) // 2:]
+            sym_blocks.add(half2 + half1)
+            scale = 0.5 if half1 == half2 else 1.0
+
+            i_last = len(terms) - 1
+            for i, term in enumerate(terms):
+                term.coeff *= scale
+                w.write(f'    {term.ambit(ignore_permutations=(i != i_last), init_temp=(i == 0), declared_temp=True)}\n')
+                term.coeff /= scale
+
+        w.write(suffix)
 
 
 def print_results(results, form='latex'):

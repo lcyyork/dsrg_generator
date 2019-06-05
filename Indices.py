@@ -381,7 +381,7 @@ class IndicesAntisymmetric(Indices):
                 list_of_indices.append(part[i][next_available[i]])
                 next_available[i] += 1
             permuted = self.__class__(list_of_indices)
-            yield (-1) ** self.count_permutations(permuted), str(permuted)
+            yield (-1) ** self.count_permutations(permuted), ",".join(map(str, list_of_indices))
 
 
 @Indices.register_subclass('spin-orbital')

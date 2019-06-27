@@ -70,6 +70,10 @@ class IndicesPair:
         return self._n_upper + self._n_lower
 
     @property
+    def indices(self):
+        return self.upper_indices.indices + self.lower_indices.indices
+
+    @property
     def type_of_indices(self):
         return self.upper_indices.__class__
 

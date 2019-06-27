@@ -40,8 +40,10 @@ class Term:
         self._sq_op = sq_op
 
         # test if this term is connected
-        upper_indices, lower_indices = sq_op.cre_ops.indices_set.copy(), sq_op.ann_ops.indices_set.copy()
-        n_upper, n_lower = sq_op.n_cre, sq_op.n_ann
+        connection = defaultdict(int)
+        for i in sq_op.indices:
+            connection[i] += 1
+
         for tensor in list_of_tensors:
             if not isinstance(tensor, Tensor):
                 raise TypeError(f"Invalid element in Term::list_of_tensors, given '{tensor.__class__.__name__}',"
@@ -52,21 +54,20 @@ class Term:
                                 f" indices should be of type '{sq_op.type_of_indices}',"
                                 f" but found '{tensor.type_of_indices}'.")
 
-            upper_indices |= tensor.upper_indices.indices_set
-            lower_indices |= tensor.lower_indices.indices_set
-            n_upper += tensor.n_upper
-            n_lower += tensor.n_lower
+            for i in tensor.indices_pair.indices:
+                connection[i] += 1
 
-        if upper_indices != lower_indices:
+        if any(v != 2 for v in connection.values()):
             raise ValueError(f"Invalid Term because it is not connected.\n"
-                             f"Upper indices: {upper_indices}\n"
-                             f"Lower indices: {lower_indices}")
+                             f"tensors: {list_of_tensors}\n"
+                             f"operator: {sq_op}\n"
+                             f"indices count: {connection}")
 
-        if len(upper_indices) != n_upper or len(lower_indices) != n_lower:
+        if any(v > 2 for v in connection.values()):
             raise ValueError("Invalid Term because repeated indices are found among different Tensors.")
 
         self._list_of_tensors = sorted(list_of_tensors) if need_to_sort else list_of_tensors
-        self._indices_set = upper_indices
+        self._indices_set = set(connection.keys())
         self._n_tensors = len(list_of_tensors)
         self._sorted = need_to_sort
 
@@ -158,6 +159,19 @@ class Term:
 
     def __repr__(self):
         return self.latex(permute_format=False)
+
+    def is_excitation(self):
+        """
+        Test if this term is a possible excitation operator.
+        :return: True if this term is a possible excitation operator, otherwise False.
+        """
+        for index in self.sq_op.cre_ops:
+            if 'c' == index.space:
+                return False
+        for index in self.sq_op.ann_ops:
+            if 'v' == index.space:
+                return False
+        return True
 
     @staticmethod
     def format_coeff(value, form=None):

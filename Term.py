@@ -85,7 +85,7 @@ class Term:
     def coeff(self, value):
         try:
             v = float(value)
-        except:
+        except ValueError:
             raise ValueError(f"Invalid Term::coeff, given {value} ('{value.__class__.__name__}'),"
                              f" required 'float'.")
         self._coeff = v

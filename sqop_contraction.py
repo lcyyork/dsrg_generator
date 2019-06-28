@@ -15,6 +15,187 @@ from Tensor import make_tensor_preset, HoleDensity, Kronecker, Cumulant
 from timeit import default_timer as timer
 
 
+def generate_elementary_contractions_new(ops_list, max_cu=3):
+    """
+    Generate all elementary contractions from a list of second-quantized operators.
+    :param ops_list: a list of SecondQuantizedOperator objects
+    :param max_cu: the max level of cumulants
+    :return: a dictionary of {(connected op indices): a list of contractions represented by HoleDensity and Cumulant}
+    """
+    for op in ops_list:
+        if not isinstance(op, SecondQuantizedOperator):
+            raise TypeError(f"Invalid type in ops_list, given '{op.__class__.__name__}', "
+                            f"required 'SecondQuantizedOperator'.")
+        if op.type_of_indices != IndicesSpinOrbital:
+            raise NotImplementedError(f"Contractions only supports spin-orbital indices now.")
+    if not isinstance(max_cu, int):
+        raise TypeError(f"Invalid type of max_cu, given '{max_cu.__class__.__name__}', required 'int'.")
+
+    # determine if max_cu makes sense (cumulant indices cannot be core or virtual)
+    cv = ["c", "v"]
+    n_valid_cre = sum([op.n_cre - op.cre_ops.count_index_space(cv) for op in ops_list])
+    n_valid_ann = sum([op.n_ann - op.ann_ops.count_index_space(cv) for op in ops_list])
+    max_cu_allowed = max(1, min(n_valid_cre, n_valid_ann))
+    if max_cu < 1 or max_cu > max_cu_allowed:
+        print(f"Max cumulant level is set to {max_cu_allowed}.")
+        max_cu = max_cu_allowed
+
+    out = generate_elementary_contractions_pairwise(ops_list)
+    if max_cu < 2:
+        return out
+
+    out.update(generate_elementary_contractions_cumulant(ops_list, max_cu))
+
+    return out
+
+
+def generate_elementary_contractions_pairwise(ops_list):
+    """
+    Generate all single pairwise contractions from a list of second-quantized operators.
+    :param ops_list: a list of SecondQuantizedOperator objects
+    :return: a dictionary of {(connected op indices): a list of contractions, i.e., HoleDensity or Cumulant}
+    """
+    out = defaultdict(list)
+
+    for i, left in enumerate(ops_list):
+        for j, right, in enumerate(ops_list[i + 1:], i + 1):
+
+            # 1-cumulant: left cre + right ann
+            for upper in left.cre_ops:
+                if upper.space == 'v':
+                    continue
+                for lower in right.ann_ops:
+                    if lower.space == 'v':
+                        continue
+                    if len(space_relation[upper.space] & space_relation[lower.space]) != 0:
+                        out[(i, j)].append(make_tensor_preset('cumulant', [upper], [lower], 'spin-orbital'))
+
+            # 1-hole-density: left ann + right cre
+            for lower in left.ann_ops:
+                if lower.space == 'c':
+                    continue
+                for upper in right.cre_ops:
+                    if upper.space == 'c':
+                        continue
+                    if len(space_relation[upper.space] & space_relation[lower.space]) != 0:
+                        out[(i, j)].append(make_tensor_preset('hole_density', [upper], [lower], 'spin-orbital'))
+
+    return out
+
+
+def generate_elementary_contractions_cumulant(ops_list, max_cu):
+    """
+    Generate all cumulant-type elementary contractions from a list of second-quantized operators.
+    :param ops_list: a list of SecondQuantizedOperator objects
+    :param max_cu: the max level of cumulants
+    :return: a dictionary of {(connected op indices): a list of contractions, i.e., Cumulant}
+    """
+    out = defaultdict(list)
+
+    # for cumulant, since n_cre = n_ann, consider cre/ann separately
+    cv = ["c", "v"]
+    cre_ops_list = [IndicesSpinOrbital([i for i in op.cre_ops if i.space not in cv]) for op in ops_list]
+    ann_ops_list = [IndicesSpinOrbital([i for i in op.ann_ops if i.space not in cv]) for op in ops_list]
+
+    # generate all possible pure creation or annihilation for cumulant contractions
+    ann_results = generate_elementary_contractions_half_cumulant(ann_ops_list, max_cu)
+    cre_results = generate_elementary_contractions_half_cumulant(cre_ops_list, max_cu)
+
+    # now combine the cre/ann results
+    for cu_level in range(2, max_cu + 1):
+        for cre in cre_results[cu_level]:  # cre contains cu_level numbers of pairs of (i_macro, i_micro)
+
+            i_sq_op_cre = [i_macro for i_macro, _ in cre]
+            same_sq_op_cre = i_sq_op_cre.count(i_sq_op_cre[0]) == len(i_sq_op_cre)
+
+            cre_indices = [cre_ops_list[i_macro][i_micro] for i_macro, i_micro in cre]
+
+            for ann in ann_results[cu_level]:
+
+                # skip when cre and ann belong to same operator
+                i_sq_op_ann = [i_macro for i_macro, _ in ann]
+                same_sq_op_ann = i_sq_op_ann.count(i_sq_op_ann[0]) == len(i_sq_op_ann)
+
+                if same_sq_op_cre and same_sq_op_ann and i_sq_op_cre[0] == i_sq_op_ann[0]:
+                    continue
+                else:
+                    ann_indices = [ann_ops_list[i_macro][i_micro] for i_macro, i_micro in ann]
+                    out[tuple(i_sq_op_cre + i_sq_op_ann)].append(make_tensor_preset('cumulant', cre_indices,
+                                                                                    ann_indices, 'spin-orbital'))
+
+    return out
+
+
+def generate_elementary_contractions_half_cumulant(pure_ops_list, max_cu):
+    """
+    Generate all possible combinations of pure creation and annihilation operators for cumulant contractions.
+    :param pure_ops_list: a list of pure creation or annihilation indices for each input operator
+    :param max_cu: the max level of cumulants
+    :return: {cumulant level: [[n_cumulant of chosen indices (op index, relative index)], ...]}
+
+    Consider the following list of pure cre/ann operators: pure_ops_list = [[a, b], [c, d], [e, f, g]]
+    and we want to obtain 2, 3, 4 cumulants, i.e., max_cu = 4.
+    Note that there are three macro operators: [a, b], [c, d], [e, f, g]
+    and the first macro operator has two micro operators: a, b
+
+    This function will do the following:
+        (1) generate all unique integer partitions of 2, 3, and 4, i.e, partition legs for k cumulant
+            2 = 1 + 1                       # note a)
+            3 = 2 + 1 = 1 + 1 + 1           # note b)
+            4 = 3 + 1 = 2 + 2 = 2 + 1 + 1   # note c)
+            Note:
+                a) single partition is included, e.g, [2] is valid
+                a) only unique partitions, e.g., 1 + 2 is ignored
+                b) len(pure_ops_list) = 3 => number of partitions must <= 3
+        (2) generate all possible sub-indices for each macro operator in pure_ops_list
+            and return [{n_leg: [relative indices of the current string of cre/ann operators]}, ...]
+            for the example, we should get:
+                [{1: [(0,), (1,)], 2: [(0, 1)]},
+                 {1: [(0,), (1,)], 2: [(0, 1)]},
+                 {1: [(0,), (1,), (2,)], 2: [(0, 1), (0, 2), (1, 2)], 3: [(0, 1, 2)]}]
+        (3) loop over integer partitions and choose the corresponding sub-indices partitions
+            for example,
+                => 2 + 1, i.e, select 2 legs from one macro operator and 1 leg from one of the others
+                => consider multiset permutations, 2 + 1 = 1 + 2. another example: 2 + 1 + 1 = 1 + 2 + 1 = 1 + 1 + 2
+                => choose 2 macro operators from the given three
+                => say we choose the first two macro operators, where the first contributes two legs:
+                    that is, [(0, 1)] from the first macro operator, [(0,), (1,)] from the second macro operator
+                => generate all possible selections by a nested loop
+                    => cartesian product between [(0, 1)] and [(0,), (1,)], i.e., a nested loop
+                    => combine with macro operator index and get [(0, 0), (0, 1), (1, 0)], [(0, 0), (0, 1), (1, 1)]
+    """
+    results = {i: [] for i in range(2, max_cu + 1)}
+
+    # generate all possible unique partitions for k cre/ann legs for k cumulant
+    macro_size = len(pure_ops_list)
+    unique_partitions = [part for k in range(2, max_cu + 1)
+                         for part in integer_partition(k) if len(part) <= macro_size]
+
+    # generate all possible sub-indices for each macro operator
+    sub_indices = [{n_leg: [ele_ops for ele_ops in combinations(range(ops.size), n_leg)]
+                    for n_leg in range(1, min(max_cu, ops.size) + 1)} for ops in pure_ops_list]
+
+    for unique_partition in unique_partitions:
+        n_macro = len(unique_partition)
+        cu_level = sum(unique_partition)
+
+        for leg_part in multiset_permutations(unique_partition):
+
+            # choose n_macro from ops_list
+            for macro_ops in combinations(range(macro_size), n_macro):
+
+                # check if this partition is valid on these chosen macro operators
+                if any([len(pure_ops_list[i]) < n_leg for i, n_leg in zip(macro_ops, leg_part)]):
+                    continue
+
+                # generate all possibilities
+                for micro_ops_pro in product(*[sub_indices[i][n_leg] for i, n_leg in zip(macro_ops, leg_part)]):
+                    results[cu_level].append([(i_macro, i_micro) for i_macro, micro_ops in zip(macro_ops, micro_ops_pro)
+                                              for i_micro in micro_ops])
+
+    return results
+
+
 def generate_elementary_contractions(ops_list, max_cu=3):
     """
     Generate all elementary contractions from a list of second-quantized operators.
@@ -40,7 +221,7 @@ def generate_elementary_contractions(ops_list, max_cu=3):
         print(f"Max cumulant level is set to {max_cu_allowed}.")
         max_cu = max_cu_allowed
 
-    out_list = []
+    out_list = list()
 
     # 1-body cumulant and hole density
     for i, left in enumerate(ops_list):
@@ -91,7 +272,6 @@ def generate_elementary_contractions(ops_list, max_cu=3):
                 else:
                     ann_indices = [ann_ops_list[ann[i][0]][ann[i][1]] for i in range(cu_level)]
                     out_list.append(make_tensor_preset('cumulant', cre_indices, ann_indices, 'spin-orbital'))
-
     return out_list
 
 

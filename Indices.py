@@ -260,7 +260,7 @@ class Indices:
         :return: True if find any overlap
         """
         self._is_valid_operand(other)
-        return len(self.indices_set & other.indices_set) != 0
+        return not self.indices_set.isdisjoint(other.indices_set)
 
     def n_multiset_permutation(self, part):
         """ Return the number of multiset permutations of this Indices object. """

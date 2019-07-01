@@ -182,6 +182,9 @@ class Tensor:
     def __repr__(self):
         return self.latex()
 
+    def __hash__(self):
+        return hash(str(self))
+
     def latex(self, dollar=False):
         out = f"{self.name}{self.indices_pair.latex()}"
         if dollar:

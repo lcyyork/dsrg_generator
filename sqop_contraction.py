@@ -3,7 +3,7 @@ import sys
 from joblib import Parallel, delayed
 from copy import deepcopy
 from collections import defaultdict
-from itertools import combinations, product
+from itertools import combinations, product, chain
 from sympy.combinatorics import Permutation
 from sympy.utilities.iterables import multiset_permutations
 from integer_partition import integer_partition
@@ -15,7 +15,17 @@ from Tensor import make_tensor_preset, HoleDensity, Kronecker, Cumulant
 from timeit import default_timer as timer
 
 
-def generate_elementary_contractions_new(ops_list, max_cu=3):
+def compute_elementary_contractions_list(ops_list, max_cu=3):
+    """
+    Generate all elementary contractions from a list of second-quantized operators.
+    :param ops_list: a list of SecondQuantizedOperator objects
+    :param max_cu: the max level of cumulants
+    :return: a list of elementary contractions represented by HoleDensity and Cumulant
+    """
+    return list(chain(*compute_elementary_contractions_categorized(ops_list, max_cu).values()))
+
+
+def compute_elementary_contractions_categorized(ops_list, max_cu=3):
     """
     Generate all elementary contractions from a list of second-quantized operators.
     :param ops_list: a list of SecondQuantizedOperator objects
@@ -40,16 +50,16 @@ def generate_elementary_contractions_new(ops_list, max_cu=3):
         print(f"Max cumulant level is set to {max_cu_allowed}.")
         max_cu = max_cu_allowed
 
-    out = generate_elementary_contractions_pairwise(ops_list)
+    out = compute_elementary_contractions_pairwise(ops_list)
     if max_cu < 2:
         return out
 
-    out.update(generate_elementary_contractions_cumulant(ops_list, max_cu))
+    out.update(compute_elementary_contractions_cumulant(ops_list, max_cu))
 
     return out
 
 
-def generate_elementary_contractions_pairwise(ops_list):
+def compute_elementary_contractions_pairwise(ops_list):
     """
     Generate all single pairwise contractions from a list of second-quantized operators.
     :param ops_list: a list of SecondQuantizedOperator objects
@@ -78,12 +88,12 @@ def generate_elementary_contractions_pairwise(ops_list):
                     if upper.space == 'c':
                         continue
                     if len(space_relation[upper.space] & space_relation[lower.space]) != 0:
-                        out[(i, j)].append(make_tensor_preset('hole_density', [upper], [lower], 'spin-orbital'))
+                        out[(j, i)].append(make_tensor_preset('hole_density', [upper], [lower], 'spin-orbital'))
 
     return out
 
 
-def generate_elementary_contractions_cumulant(ops_list, max_cu):
+def compute_elementary_contractions_cumulant(ops_list, max_cu):
     """
     Generate all cumulant-type elementary contractions from a list of second-quantized operators.
     :param ops_list: a list of SecondQuantizedOperator objects
@@ -98,8 +108,8 @@ def generate_elementary_contractions_cumulant(ops_list, max_cu):
     ann_ops_list = [IndicesSpinOrbital([i for i in op.ann_ops if i.space not in cv]) for op in ops_list]
 
     # generate all possible pure creation or annihilation for cumulant contractions
-    ann_results = generate_elementary_contractions_half_cumulant(ann_ops_list, max_cu)
-    cre_results = generate_elementary_contractions_half_cumulant(cre_ops_list, max_cu)
+    ann_results = compute_elementary_contractions_half_cumulant(ann_ops_list, max_cu)
+    cre_results = compute_elementary_contractions_half_cumulant(cre_ops_list, max_cu)
 
     # now combine the cre/ann results
     for cu_level in range(2, max_cu + 1):
@@ -126,7 +136,7 @@ def generate_elementary_contractions_cumulant(ops_list, max_cu):
     return out
 
 
-def generate_elementary_contractions_half_cumulant(pure_ops_list, max_cu):
+def compute_elementary_contractions_half_cumulant(pure_ops_list, max_cu):
     """
     Generate all possible combinations of pure creation and annihilation operators for cumulant contractions.
     :param pure_ops_list: a list of pure creation or annihilation indices for each input operator
@@ -194,6 +204,127 @@ def generate_elementary_contractions_half_cumulant(pure_ops_list, max_cu):
                                               for i_micro in micro_ops])
 
     return results
+
+
+def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0,
+                                  for_commutator=False, expand_hole=True, n_process=1):
+    """
+    Generate operator contractions for a list of SQOperator.
+    :param ops_list: a list of SecondQuantizedOperator to be contracted
+    :param max_cu: max level of cumulant
+    :param max_n_open: max number of open indices for contractions kept for return
+    :param min_n_open: min number of open indices for contractions kept for return
+    :param for_commutator: remove all-cumulant-type and disconnected contractions
+    :param expand_hole: expand hole density to Kronecker delta and 1-cumulant if True
+    :param n_process: the number of processes launched by multiprocessing
+    :return: a list of contractions in terms of (sign, list_of_densities, sq_op)
+    """
+    # original ordering of the second-quantized operators
+    base_order_indices = []
+    upper_indices_set, lower_indices_set = set(), set()
+    for sq_op in ops_list:
+        base_order_indices += sq_op.cre_ops.indices + sq_op.ann_ops.indices[::-1]
+        upper_indices_set.update(sq_op.cre_ops.indices)
+        lower_indices_set.update(sq_op.ann_ops.indices)
+    n_indices = len(base_order_indices)
+    base_order_map = {v: i for i, v in enumerate(base_order_indices)}
+
+    if for_commutator:
+        # TODO
+        elementary_contractions = compute_elementary_contractions_categorized(ops_list, max_cu)
+    else:
+        # TODO: use original implementation, need to include the non-contracted term
+        elementary_contractions = compute_elementary_contractions_list()
+
+    # TODO: translate contractions and return results
+
+    # # generate elementary contractions
+    # # start = timer()
+    # elementary_contractions = compute_elementary_contractions(ops_list, max_cu)
+    # # end = timer()
+    # # print(f"generate elementary contractions: {end - start:.6f}s, number of elementary contractions: {n_ele_con}")
+    #
+    # # contracted ops id for elementary contractions
+    # elementary_contractions_ops_id = sorted(elementary_contractions.keys(), key=lambda x: len(x), reverse=True)
+    #
+    # composite_contractions_ops_id = list()
+    # contracted_ops_id_backtracking(elementary_contractions_ops_id, [], composite_contractions_ops_id,
+    #                                (n_indices - max_n_open, n_indices - min_n_open), 0,
+    #                                set(range(len(ops_list))), set(), include_all_cumulant_cons, True, connected)
+    # print(len(composite_contractions_ops_id))
+    # for i in composite_contractions_ops_id:
+    #     print(i)
+
+
+def contracted_ops_id_backtracking(available, chosen, out, desired_n_con, n_con_so_far,
+                                   ops_complete, ops_so_far, include_all_cu, all_cu_so_far, connected):
+    desired_min, desired_max = desired_n_con
+
+    if len(available) == 0:  # base case, nothing to choose
+        if connected:
+            if len(ops_so_far) == len(ops_complete):
+                out.append(chosen[:])
+        else:
+            out.append(chosen[:])
+    else:
+        print(n_con_so_far, chosen)
+
+        if n_con_so_far < desired_max and (include_all_cu or (not all_cu_so_far) or n_con_so_far == 0):
+            # two choices to explore: with or without the given element
+            temp = available.pop()  # choose
+            temp_ops = set(temp)
+
+            if (not ops_so_far.isdisjoint(temp_ops)) or n_con_so_far == 0:
+                # include this element
+                chosen.append(temp)
+                temp_size = len(temp)
+                temp_ops = temp_ops | ops_so_far if len(ops_so_far) < len(ops_complete) else ops_complete
+                contracted_ops_id_backtracking(available, chosen, out, desired_n_con, n_con_so_far + temp_size,
+                                               ops_complete, temp_ops, include_all_cu, temp_size > 2 and all_cu_so_far,
+                                               connected)
+
+                # not to include this element
+                chosen.pop()
+
+            contracted_ops_id_backtracking(available, chosen, out, desired_n_con, n_con_so_far,
+                                           ops_complete, ops_so_far, include_all_cu, all_cu_so_far, connected)
+
+            available.append(temp)  # un-choose
+        else:
+            contracted_ops_id_backtracking(set(), chosen, out, desired_n_con, n_con_so_far,
+                                           ops_complete, ops_so_far, include_all_cu, all_cu_so_far, connected)
+
+
+        # if n_con_so_far < desired_max and (include_all_cu or (not all_cu_so_far) or n_con_so_far == 0):
+        #     # two choices to explore: with or without the given element
+        #     temp = available.pop()  # choose
+        #     temp_ops = set(temp)
+        #
+        #     if (not ops_so_far.isdisjoint(temp_ops)) or n_con_so_far == 0:
+        #         # include this element
+        #         chosen.append(temp)
+        #         temp_size = len(temp)
+        #         temp_ops = temp_ops | ops_so_far if len(ops_so_far) < len(ops_complete) else ops_complete
+        #         contracted_ops_id_backtracking(available, chosen, out, desired_n_con, n_con_so_far + temp_size,
+        #                                        ops_complete, temp_ops, include_all_cu, temp_size > 2 and all_cu_so_far,
+        #                                        connected)
+        #
+        #         # not to include this element
+        #         chosen.pop()
+        #
+        #     contracted_ops_id_backtracking(available, chosen, out, desired_n_con, n_con_so_far,
+        #                                    ops_complete, ops_so_far, include_all_cu, all_cu_so_far, connected)
+        #
+        #     available.append(temp)  # un-choose
+
+
+def compute_incompatible_elementary_contractions(ele_cons):
+    """
+    Figure out incompatible elementary contractions from a list of second-quantized operators.
+    :param elementary_contractions: elementary contractions generated by function elementary_contractions
+    :return: a dictionary of {(connected op indices): a list of contractions represented by HoleDensity and Cumulant}
+    """
+    return
 
 
 def generate_elementary_contractions(ops_list, max_cu=3):

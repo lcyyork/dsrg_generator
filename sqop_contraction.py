@@ -1,8 +1,9 @@
 import multiprocessing
 import sys
+import numpy as np
 from joblib import Parallel, delayed
 from copy import deepcopy
-from collections import defaultdict
+from collections import defaultdict, Counter
 from itertools import combinations, product, chain
 from sympy.combinatorics import Permutation
 from sympy.utilities.iterables import multiset_permutations
@@ -230,11 +231,21 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
     base_order_map = {v: i for i, v in enumerate(base_order_indices)}
 
     if for_commutator:
-        # TODO
         elementary_contractions = compute_elementary_contractions_categorized(ops_list, max_cu)
+
+        # TODO: first backtrack on contracted operators blocks
+        composite_contractions_ops_id = list()
+        contracted_operator_backtrack(sorted(elementary_contractions.keys(), key=lambda x: len(x), reverse=True),
+                                      [], composite_contractions_ops_id, n_indices - min_n_open, 0,
+                                      [sq_op.n_cre for sq_op in ops_list], [sq_op.n_ann for sq_op in ops_list],
+                                      set(), True)
+        print(len(composite_contractions_ops_id))
+        for i in composite_contractions_ops_id:
+            print(i)
+
     else:
         # TODO: use original implementation, need to include the non-contracted term
-        elementary_contractions = compute_elementary_contractions_list()
+        elementary_contractions = compute_elementary_contractions_list(ops_list, max_cu)
 
     # TODO: translate contractions and return results
 
@@ -254,6 +265,103 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
     # print(len(composite_contractions_ops_id))
     # for i in composite_contractions_ops_id:
     #     print(i)
+
+
+def contracted_operator_backtrack(available, chosen, out, n_con_max, n_con_so_far,
+                                  cre_available, ann_available, ops_so_far, all_cu_so_far):
+    """
+    Generate all possible connected macro operator contractions
+    :param available: a list of unexplored elementary contracted macro operators (tuple of operator indices)
+    :param chosen: a list of chosen contracted macro operators
+    :param out: a list of valid connected macro operators
+    :param n_con_max: the max number of contractions specified by the user
+    :param n_con_so_far: the number of contractions so far
+    :param cre_available: a list of numbers of micro creation operators for each macro operator
+    :param ann_available: a list of numbers of micro annihilation operators for each macro operator
+    :param ops_so_far: a set of macro operator indices so far
+    :param all_cu_so_far: a boolean to represent if contractions chosen so far are all cumulants
+
+    Consider the following list of elementary contractions from T1^\dag * H2 * T1 * T1 up to 2-cumulant:
+    [(1, 1, 0, 1), (1, 1, 0, 2), (1, 1, 0, 3), (1, 1, 1, 2), (1, 1, 1, 3), (1, 1, 2, 3), (0, 1, 1, 1),
+     (0, 1, 0, 1), (0, 1, 0, 2), (0, 1, 0, 3), (0, 1, 1, 2), (0, 1, 1, 3), (0, 1, 2, 3), (0, 2, 1, 1),
+     (0, 2, 0, 1), (0, 2, 0, 2), (0, 2, 0, 3), (0, 2, 1, 2), (0, 2, 1, 3), (0, 2, 2, 3), (0, 3, 1, 1),
+     (0, 3, 0, 1), (0, 3, 0, 2), (0, 3, 0, 3), (0, 3, 1, 2), (0, 3, 1, 3), (0, 3, 2, 3), (1, 2, 1, 1),
+     (1, 2, 0, 1), (1, 2, 0, 2), (1, 2, 0, 3), (1, 2, 1, 2), (1, 2, 1, 3), (1, 2, 2, 3), (1, 3, 1, 1),
+     (1, 3, 0, 1), (1, 3, 0, 2), (1, 3, 0, 3), (1, 3, 1, 2), (1, 3, 1, 3), (1, 3, 2, 3), (2, 3, 1, 1),
+     (2, 3, 0, 1), (2, 3, 0, 2), (2, 3, 0, 3), (2, 3, 1, 2), (2, 3, 1, 3), (2, 3, 2, 3),
+     (0, 1), (1, 0), (0, 2), (2, 0), (0, 3), (3, 0), (1, 2), (2, 1), (1, 3), (3, 1), (2, 3), (3, 2)]
+
+    Each tuple represent a possible contraction,
+    e.g., (1, 1, 0, 1): 2-cumulant where 2 cre and 1 ann come from H2, and one ann comes from T1^\dag
+    e.g., (1, 0): 1-hole-density where cre comes from H2 and ann comes from T1^\dag
+
+    This function will ignore the following contractions:
+    1) disconnected, e.g., [(0, 1)] or [(0, 1), (1, 0), (2, 3)]
+    2) all cumulant, e.g., [(0, 1, 0, 2), (1, 2, 1, 3)]
+    3) exceed cre/ann, e.g., [(1, 1, 0, 1), (1, 2), (2, 3)] because H2 has only 2 creations but 3 are in the list
+    """
+    n_ops = len(cre_available)
+
+    # base case, nothing to choose
+    if len(available) == 0:
+        if len(ops_so_far) == n_ops:
+            out.append(chosen[:])
+    else:
+        # explore when number of contractions are not enough or previous contractions are all of cumulant type
+        if n_con_so_far < n_con_max and (len(available[-1]) == 2 if n_con_so_far == 0 else not all_cu_so_far):
+
+            # choose an element
+            temp = available.pop()
+
+            temp_ops = set(temp)
+            n_body = len(temp) // 2
+            cre_count, ann_count = Counter(temp[:n_body]), Counter(temp[n_body:])
+
+            # include this element when: 1) this element must connect to the previous ones,
+            #                            2) both cre and ann won't exceed
+            if ((not ops_so_far.isdisjoint(temp_ops)) or n_con_so_far == 0) and \
+                    all(cre_available[k] - v >= 0 for k, v in cre_count.items()) and \
+                    all(ann_available[k] - v >= 0 for k, v in ann_count.items()):
+
+                chosen.append(temp)  # include this element
+
+                cre_available_new, ann_available_new = cre_available[:], ann_available[:]
+                i_zero_cre, i_zero_ann = set(), set()
+                for k, v in cre_count.items():
+                    cre_available_new[k] -= v
+                    if cre_available_new[k] == 0:
+                        i_zero_cre.add(k)
+                for k, v in ann_count.items():
+                    ann_available_new[k] -= v
+                    if ann_available_new[k] == 0:
+                        i_zero_ann.add(k)
+
+                if len(i_zero_ann) == 0 and len(i_zero_cre) == 0:
+                    available_pruned = available
+                else:
+                    available_pruned = list()
+                    for con_ops in available:
+                        if any(i_cre in i_zero_cre for i_cre in con_ops[:len(con_ops) // 2]):
+                            continue
+                        if any(i_ann in i_zero_ann for i_ann in con_ops[len(con_ops) // 2:]):
+                            continue
+                        available_pruned.append(con_ops)
+
+                contracted_operator_backtrack(available_pruned, chosen, out, n_con_max, n_con_so_far + 2 * n_body,
+                                              cre_available_new, ann_available_new,
+                                              ops_so_far | temp_ops, all_cu_so_far and n_body > 1)
+
+                chosen.pop()  # not include this element
+
+            # not include this element
+            contracted_operator_backtrack(available, chosen, out, n_con_max, n_con_so_far,
+                                          cre_available, ann_available, ops_so_far, all_cu_so_far)
+
+            # un-choose this element
+            available.append(temp)
+        else:
+            contracted_operator_backtrack(list(), chosen, out, n_con_max, n_con_so_far,
+                                          cre_available, ann_available, ops_so_far, all_cu_so_far)
 
 
 def contracted_ops_id_backtracking(available, chosen, out, desired_n_con, n_con_so_far,

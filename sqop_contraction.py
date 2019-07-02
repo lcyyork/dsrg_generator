@@ -233,15 +233,17 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
     if for_commutator:
         elementary_contractions = compute_elementary_contractions_categorized(ops_list, max_cu)
 
-        # TODO: first backtrack on contracted operators blocks
+        # first backtrack on elementary contracted macro operators
         composite_contractions_ops_id = list()
         contracted_operator_backtrack(sorted(elementary_contractions.keys(), key=lambda x: len(x), reverse=True),
                                       [], composite_contractions_ops_id, n_indices - min_n_open, 0,
                                       [sq_op.n_cre for sq_op in ops_list], [sq_op.n_ann for sq_op in ops_list],
                                       set(), True)
         print(len(composite_contractions_ops_id))
-        for i in composite_contractions_ops_id:
-            print(i)
+        # for i in composite_contractions_ops_id:
+        #     print(i)
+
+        # TODO: generate actual contractions
 
     else:
         # TODO: use original implementation, need to include the non-contracted term
@@ -299,6 +301,10 @@ def contracted_operator_backtrack(available, chosen, out, n_con_max, n_con_so_fa
     1) disconnected, e.g., [(0, 1)] or [(0, 1), (1, 0), (2, 3)]
     2) all cumulant, e.g., [(0, 1, 0, 2), (1, 2, 1, 3)]
     3) exceed cre/ann, e.g., [(1, 1, 0, 1), (1, 2), (2, 3)] because H2 has only 2 creations but 3 are in the list
+
+    NOTE: The ordering of the available list matters!
+          The backtracking algorithm starts from the end of the list:
+          once pairwise contractions are all explored, we can terminate the entire process.
     """
     n_ops = len(cre_available)
 
@@ -307,7 +313,8 @@ def contracted_operator_backtrack(available, chosen, out, n_con_max, n_con_so_fa
         if len(ops_so_far) == n_ops:
             out.append(chosen[:])
     else:
-        # explore when number of contractions are not enough or previous contractions are all of cumulant type
+        # explore when 1) number of contractions are not enough,
+        #              2) previous contractions are not all cumulants
         if n_con_so_far < n_con_max and (len(available[-1]) == 2 if n_con_so_far == 0 else not all_cu_so_far):
 
             # choose an element
@@ -325,30 +332,11 @@ def contracted_operator_backtrack(available, chosen, out, n_con_max, n_con_so_fa
 
                 chosen.append(temp)  # include this element
 
-                cre_available_new, ann_available_new = cre_available[:], ann_available[:]
-                i_zero_cre, i_zero_ann = set(), set()
-                for k, v in cre_count.items():
-                    cre_available_new[k] -= v
-                    if cre_available_new[k] == 0:
-                        i_zero_cre.add(k)
-                for k, v in ann_count.items():
-                    ann_available_new[k] -= v
-                    if ann_available_new[k] == 0:
-                        i_zero_ann.add(k)
+                available_new = _prune_available_contracted_operator(available, cre_available, ann_available,
+                                                                     cre_count, ann_count)
 
-                if len(i_zero_ann) == 0 and len(i_zero_cre) == 0:
-                    available_pruned = available
-                else:
-                    available_pruned = list()
-                    for con_ops in available:
-                        if any(i_cre in i_zero_cre for i_cre in con_ops[:len(con_ops) // 2]):
-                            continue
-                        if any(i_ann in i_zero_ann for i_ann in con_ops[len(con_ops) // 2:]):
-                            continue
-                        available_pruned.append(con_ops)
-
-                contracted_operator_backtrack(available_pruned, chosen, out, n_con_max, n_con_so_far + 2 * n_body,
-                                              cre_available_new, ann_available_new,
+                contracted_operator_backtrack(available_new[0], chosen, out, n_con_max, n_con_so_far + 2 * n_body,
+                                              available_new[1], available_new[2],
                                               ops_so_far | temp_ops, all_cu_so_far and n_body > 1)
 
                 chosen.pop()  # not include this element
@@ -362,6 +350,43 @@ def contracted_operator_backtrack(available, chosen, out, n_con_max, n_con_so_fa
         else:
             contracted_operator_backtrack(list(), chosen, out, n_con_max, n_con_so_far,
                                           cre_available, ann_available, ops_so_far, all_cu_so_far)
+
+
+def _prune_available_contracted_operator(available, cre_available, ann_available, cre_count, ann_count):
+    """
+    Remove some of the unexplored elementary contractions based on cre/ann counts.
+    :param available: a list of unexplored elementary contracted macro operators (tuple of operator indices)
+    :param cre_available: a list of numbers of micro creation operators for each macro operator
+    :param ann_available: a list of numbers of micro annihilation operators for each macro operator
+    :param cre_count: a Counter {micro operator index: count} for creation operators of the current contraction
+    :param ann_count: a Counter for annihilation operators of the current contraction
+    :return: truncated unexplored list, updated cre/ann lists
+    """
+
+    def update_op_available(op_available, op_count):
+        op_available_new = op_available[:]
+        zero_count_id = set()
+        for k, v in op_count.items():
+            op_available_new[k] -= v
+            if op_available_new[k] == 0:
+                zero_count_id.add(k)
+        return op_available_new, zero_count_id
+
+    cre_available_new, cre_zero_count_id = update_op_available(cre_available, cre_count)
+    ann_available_new, ann_zero_count_id = update_op_available(ann_available, ann_count)
+
+    if len(cre_zero_count_id) == 0 and len(ann_zero_count_id) == 0:
+        available_pruned = available
+    else:
+        available_pruned = list()
+        for con_ops in available:
+            if any(i_cre in cre_zero_count_id for i_cre in con_ops[:len(con_ops) // 2]):
+                continue
+            if any(i_ann in ann_zero_count_id for i_ann in con_ops[len(con_ops) // 2:]):
+                continue
+            available_pruned.append(con_ops)
+
+    return available_pruned, cre_available_new, ann_available_new
 
 
 def contracted_ops_id_backtracking(available, chosen, out, desired_n_con, n_con_so_far,

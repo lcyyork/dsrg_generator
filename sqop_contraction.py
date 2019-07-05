@@ -232,18 +232,29 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
 
     if for_commutator:
         elementary_contractions = compute_elementary_contractions_categorized(ops_list, max_cu)
+        elementary_contractions_macro = sorted(elementary_contractions.keys(), key=lambda x: (len(x), x), reverse=True)
 
-        # first backtrack on elementary contracted macro operators
-        composite_contractions_ops_id = list()
-        contracted_operator_backtrack(sorted(elementary_contractions.keys(), key=lambda x: len(x), reverse=True),
-                                      [], composite_contractions_ops_id, n_indices - min_n_open, 0,
-                                      [sq_op.n_cre for sq_op in ops_list], [sq_op.n_ann for sq_op in ops_list],
-                                      set(), True)
-        print(len(composite_contractions_ops_id))
-        # for i in composite_contractions_ops_id:
-        #     print(i)
+        # integer partitions for memoization
+        used_integer_partitions = defaultdict(list)
 
-        # TODO: generate actual contractions
+        # TODO: figure out the incompatible contractions
+
+
+        # backtrack on elementary contracted macro operators
+        for i in contracted_operator_backtrack(elementary_contractions_macro, [], n_indices - min_n_open, 0,
+                                               [sq_op.n_cre for sq_op in ops_list], [sq_op.n_ann for sq_op in ops_list],
+                                               set(), True):
+            print(i)
+        #
+        # # TODO: generate actual contractions
+        # incompatible_contractions = defaultdict(list)
+        # for ops_ids in composite_contractions_ops_id[:200]:
+        #     print(ops_ids)
+        #     n_ops = len(ops_ids)
+        #     size = sum([len(i) for i in ops_ids])
+        #
+        #     print(max(n_indices - max_n_open - size, 0) // 2, (n_indices - min_n_open - size) // 2)
+
 
     else:
         # TODO: use original implementation, need to include the non-contracted term
@@ -269,13 +280,12 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
     #     print(i)
 
 
-def contracted_operator_backtrack(available, chosen, out, n_con_max, n_con_so_far,
+def contracted_operator_backtrack(available, chosen, n_con_max, n_con_so_far,
                                   cre_available, ann_available, ops_so_far, all_cu_so_far):
     """
     Generate all possible connected macro operator contractions
     :param available: a list of unexplored elementary contracted macro operators (tuple of operator indices)
     :param chosen: a list of chosen contracted macro operators
-    :param out: a list of valid connected macro operators
     :param n_con_max: the max number of contractions specified by the user
     :param n_con_so_far: the number of contractions so far
     :param cre_available: a list of numbers of micro creation operators for each macro operator
@@ -311,7 +321,7 @@ def contracted_operator_backtrack(available, chosen, out, n_con_max, n_con_so_fa
     # base case, nothing to choose
     if len(available) == 0:
         if len(ops_so_far) == n_ops:
-            out.append(chosen[:])
+            yield chosen
     else:
         # explore when 1) number of contractions are not enough,
         #              2) previous contractions are not all cumulants
@@ -335,21 +345,22 @@ def contracted_operator_backtrack(available, chosen, out, n_con_max, n_con_so_fa
                 available_new = _prune_available_contracted_operator(available, cre_available, ann_available,
                                                                      cre_count, ann_count)
 
-                contracted_operator_backtrack(available_new[0], chosen, out, n_con_max, n_con_so_far + 2 * n_body,
-                                              available_new[1], available_new[2],
-                                              ops_so_far | temp_ops, all_cu_so_far and n_body > 1)
+                yield from contracted_operator_backtrack(available_new[0], chosen,
+                                                         n_con_max, n_con_so_far + 2 * n_body,
+                                                         available_new[1], available_new[2],
+                                                         ops_so_far | temp_ops, all_cu_so_far and n_body > 1)
 
                 chosen.pop()  # not include this element
 
             # not include this element
-            contracted_operator_backtrack(available, chosen, out, n_con_max, n_con_so_far,
-                                          cre_available, ann_available, ops_so_far, all_cu_so_far)
+            yield from contracted_operator_backtrack(available, chosen, n_con_max, n_con_so_far,
+                                                     cre_available, ann_available, ops_so_far, all_cu_so_far)
 
             # un-choose this element
             available.append(temp)
         else:
-            contracted_operator_backtrack(list(), chosen, out, n_con_max, n_con_so_far,
-                                          cre_available, ann_available, ops_so_far, all_cu_so_far)
+            yield from contracted_operator_backtrack(list(), chosen, n_con_max, n_con_so_far,
+                                                     cre_available, ann_available, ops_so_far, all_cu_so_far)
 
 
 def _prune_available_contracted_operator(available, cre_available, ann_available, cre_count, ann_count):
@@ -387,68 +398,6 @@ def _prune_available_contracted_operator(available, cre_available, ann_available
             available_pruned.append(con_ops)
 
     return available_pruned, cre_available_new, ann_available_new
-
-
-def contracted_ops_id_backtracking(available, chosen, out, desired_n_con, n_con_so_far,
-                                   ops_complete, ops_so_far, include_all_cu, all_cu_so_far, connected):
-    desired_min, desired_max = desired_n_con
-
-    if len(available) == 0:  # base case, nothing to choose
-        if connected:
-            if len(ops_so_far) == len(ops_complete):
-                out.append(chosen[:])
-        else:
-            out.append(chosen[:])
-    else:
-        print(n_con_so_far, chosen)
-
-        if n_con_so_far < desired_max and (include_all_cu or (not all_cu_so_far) or n_con_so_far == 0):
-            # two choices to explore: with or without the given element
-            temp = available.pop()  # choose
-            temp_ops = set(temp)
-
-            if (not ops_so_far.isdisjoint(temp_ops)) or n_con_so_far == 0:
-                # include this element
-                chosen.append(temp)
-                temp_size = len(temp)
-                temp_ops = temp_ops | ops_so_far if len(ops_so_far) < len(ops_complete) else ops_complete
-                contracted_ops_id_backtracking(available, chosen, out, desired_n_con, n_con_so_far + temp_size,
-                                               ops_complete, temp_ops, include_all_cu, temp_size > 2 and all_cu_so_far,
-                                               connected)
-
-                # not to include this element
-                chosen.pop()
-
-            contracted_ops_id_backtracking(available, chosen, out, desired_n_con, n_con_so_far,
-                                           ops_complete, ops_so_far, include_all_cu, all_cu_so_far, connected)
-
-            available.append(temp)  # un-choose
-        else:
-            contracted_ops_id_backtracking(set(), chosen, out, desired_n_con, n_con_so_far,
-                                           ops_complete, ops_so_far, include_all_cu, all_cu_so_far, connected)
-
-
-        # if n_con_so_far < desired_max and (include_all_cu or (not all_cu_so_far) or n_con_so_far == 0):
-        #     # two choices to explore: with or without the given element
-        #     temp = available.pop()  # choose
-        #     temp_ops = set(temp)
-        #
-        #     if (not ops_so_far.isdisjoint(temp_ops)) or n_con_so_far == 0:
-        #         # include this element
-        #         chosen.append(temp)
-        #         temp_size = len(temp)
-        #         temp_ops = temp_ops | ops_so_far if len(ops_so_far) < len(ops_complete) else ops_complete
-        #         contracted_ops_id_backtracking(available, chosen, out, desired_n_con, n_con_so_far + temp_size,
-        #                                        ops_complete, temp_ops, include_all_cu, temp_size > 2 and all_cu_so_far,
-        #                                        connected)
-        #
-        #         # not to include this element
-        #         chosen.pop()
-        #
-        #     contracted_ops_id_backtracking(available, chosen, out, desired_n_con, n_con_so_far,
-        #                                    ops_complete, ops_so_far, include_all_cu, all_cu_so_far, connected)
-        #
-        #     available.append(temp)  # un-choose
 
 
 def compute_incompatible_elementary_contractions(ele_cons):

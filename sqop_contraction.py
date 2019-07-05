@@ -42,22 +42,32 @@ def compute_elementary_contractions_categorized(ops_list, max_cu=3):
     if not isinstance(max_cu, int):
         raise TypeError(f"Invalid type of max_cu, given '{max_cu.__class__.__name__}', required 'int'.")
 
-    # determine if max_cu makes sense (cumulant indices cannot be core or virtual)
+    max_cu_allowed = check_max_cu(ops_list, max_cu)
+
+    out = compute_elementary_contractions_pairwise(ops_list)
+    if max_cu_allowed < 2:
+        return out
+
+    out.update(compute_elementary_contractions_cumulant(ops_list, max_cu_allowed))
+
+    return out
+
+
+def check_max_cu(ops_list, max_cu):
+    """
+    Check if the input max_cu makes sense (cumulant indices cannot be core or virtual).
+    :param ops_list: a list of SecondQuantizedOperator objects
+    :param max_cu: the max level of cumulants
+    :return: the max valid level of cumulants
+    """
     cv = ["c", "v"]
     n_valid_cre = sum([op.n_cre - op.cre_ops.count_index_space(cv) for op in ops_list])
     n_valid_ann = sum([op.n_ann - op.ann_ops.count_index_space(cv) for op in ops_list])
     max_cu_allowed = max(1, min(n_valid_cre, n_valid_ann))
     if max_cu < 1 or max_cu > max_cu_allowed:
         print(f"Max cumulant level is set to {max_cu_allowed}.")
-        max_cu = max_cu_allowed
-
-    out = compute_elementary_contractions_pairwise(ops_list)
-    if max_cu < 2:
-        return out
-
-    out.update(compute_elementary_contractions_cumulant(ops_list, max_cu))
-
-    return out
+        return max_cu_allowed
+    return max_cu
 
 
 def compute_elementary_contractions_pairwise(ops_list):
@@ -220,6 +230,8 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
     :param n_process: the number of processes launched by multiprocessing
     :return: a list of contractions in terms of (sign, list_of_densities, sq_op)
     """
+    max_cu_allowed = check_max_cu(ops_list, max_cu)
+
     # original ordering of the second-quantized operators
     base_order_indices = []
     upper_indices_set, lower_indices_set = set(), set()
@@ -230,9 +242,12 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
     n_indices = len(base_order_indices)
     base_order_map = {v: i for i, v in enumerate(base_order_indices)}
 
+    max_n_con, min_n_con = n_indices - min_n_open, n_indices - max_n_open
+
     if for_commutator:
-        elementary_contractions = compute_elementary_contractions_categorized(ops_list, max_cu)
+        elementary_contractions = compute_elementary_contractions_categorized(ops_list, max_cu_allowed)
         elementary_contractions_macro = sorted(elementary_contractions.keys(), key=lambda x: (len(x), x), reverse=True)
+        print(elementary_contractions)
 
         # integer partitions for memoization
         used_integer_partitions = defaultdict(list)
@@ -241,10 +256,48 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
 
 
         # backtrack on elementary contracted macro operators
-        for i in contracted_operator_backtrack(elementary_contractions_macro, [], n_indices - min_n_open, 0,
-                                               [sq_op.n_cre for sq_op in ops_list], [sq_op.n_ann for sq_op in ops_list],
-                                               set(), True):
-            print(i)
+        for macro in contracted_operator_backtrack_macro(elementary_contractions_macro, [],
+                                                         max_n_con, 0,
+                                                         [sq_op.n_cre for sq_op in ops_list],
+                                                         [sq_op.n_ann for sq_op in ops_list],
+                                                         set(), True):
+            n_con_one_sweep = sum(len(i) for i in macro)
+            min_n_con = max(n_indices - max_n_open, n_con_one_sweep)
+
+            if min_n_con == max_n_con:
+                # TODO
+                print("choose one from each category", macro)
+            else:
+                count_con = {k: len(elementary_contractions[k]) - 1 for k in macro}  # -1 for must choose one
+                count_n_body = defaultdict(int)
+                for k, v in count_con.items():
+                    count_n_body[len(k) // 2] += v
+
+                max_cu_this_macro = max(len(i) for i in macro) // 2
+
+                for n_fill in range((min_n_con - n_con_one_sweep) // 2, (max_n_con - n_con_one_sweep) // 2 + 1):
+                    if n_fill == 0:
+                        # TODO
+                        print("choose one from each category, min", macro)
+                    else:
+                        if n_fill not in used_integer_partitions:
+                            partitions = [Counter(part) for part in integer_partition(n_fill)
+                                          if all(n <= max_cu_this_macro for n in part)]
+                            used_integer_partitions[n_fill] = partitions
+                        else:
+                            partitions = used_integer_partitions[n_fill]
+
+                        # TODO: some more filtering
+                        for part in partitions:
+                            print(macro, part)
+                            for macro_addon in autocomplete_macro_contractions_backtrack(macro, part, {**count_con},
+                                                                                            {**count_n_body}, []):
+                                macro_complete = macro + macro_addon
+                                print("choose multiple", macro_complete)
+
+
+
+
         #
         # # TODO: generate actual contractions
         # incompatible_contractions = defaultdict(list)
@@ -262,26 +315,9 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
 
     # TODO: translate contractions and return results
 
-    # # generate elementary contractions
-    # # start = timer()
-    # elementary_contractions = compute_elementary_contractions(ops_list, max_cu)
-    # # end = timer()
-    # # print(f"generate elementary contractions: {end - start:.6f}s, number of elementary contractions: {n_ele_con}")
-    #
-    # # contracted ops id for elementary contractions
-    # elementary_contractions_ops_id = sorted(elementary_contractions.keys(), key=lambda x: len(x), reverse=True)
-    #
-    # composite_contractions_ops_id = list()
-    # contracted_ops_id_backtracking(elementary_contractions_ops_id, [], composite_contractions_ops_id,
-    #                                (n_indices - max_n_open, n_indices - min_n_open), 0,
-    #                                set(range(len(ops_list))), set(), include_all_cumulant_cons, True, connected)
-    # print(len(composite_contractions_ops_id))
-    # for i in composite_contractions_ops_id:
-    #     print(i)
 
-
-def contracted_operator_backtrack(available, chosen, n_con_max, n_con_so_far,
-                                  cre_available, ann_available, ops_so_far, all_cu_so_far):
+def contracted_operator_backtrack_macro(available, chosen, n_con_max, n_con_so_far,
+                                        cre_available, ann_available, ops_so_far, all_cu_so_far):
     """
     Generate all possible connected macro operator contractions
     :param available: a list of unexplored elementary contracted macro operators (tuple of operator indices)
@@ -345,22 +381,22 @@ def contracted_operator_backtrack(available, chosen, n_con_max, n_con_so_far,
                 available_new = _prune_available_contracted_operator(available, cre_available, ann_available,
                                                                      cre_count, ann_count)
 
-                yield from contracted_operator_backtrack(available_new[0], chosen,
-                                                         n_con_max, n_con_so_far + 2 * n_body,
-                                                         available_new[1], available_new[2],
-                                                         ops_so_far | temp_ops, all_cu_so_far and n_body > 1)
+                yield from contracted_operator_backtrack_macro(available_new[0], chosen,
+                                                               n_con_max, n_con_so_far + 2 * n_body,
+                                                               available_new[1], available_new[2],
+                                                               ops_so_far | temp_ops, all_cu_so_far and n_body > 1)
 
                 chosen.pop()  # not include this element
 
             # not include this element
-            yield from contracted_operator_backtrack(available, chosen, n_con_max, n_con_so_far,
-                                                     cre_available, ann_available, ops_so_far, all_cu_so_far)
+            yield from contracted_operator_backtrack_macro(available, chosen, n_con_max, n_con_so_far,
+                                                           cre_available, ann_available, ops_so_far, all_cu_so_far)
 
             # un-choose this element
             available.append(temp)
         else:
-            yield from contracted_operator_backtrack(list(), chosen, n_con_max, n_con_so_far,
-                                                     cre_available, ann_available, ops_so_far, all_cu_so_far)
+            yield from contracted_operator_backtrack_macro(list(), chosen, n_con_max, n_con_so_far,
+                                                           cre_available, ann_available, ops_so_far, all_cu_so_far)
 
 
 def _prune_available_contracted_operator(available, cre_available, ann_available, cre_count, ann_count):
@@ -407,6 +443,66 @@ def compute_incompatible_elementary_contractions(ele_cons):
     :return: a dictionary of {(connected op indices): a list of contractions represented by HoleDensity and Cumulant}
     """
     return
+
+
+def autocomplete_macro_contractions_backtrack(choices, target, contraction_count, n_body_count, chosen):
+    """
+    Autocomplete the incomplete contractions from contracted_operator_backtrack_macro.
+    :param choices: a connected macro operator contraction
+    :param target: how many more contractions need to form a complete one
+    :param contraction_count: a Counter for the remaining macro contraction count, i.e., {contraction: count}
+    :param n_body_count: a Counter for the remaining n_body count (store this to avoid recompute from contraction_count)
+    :param chosen: the chosen macro operator contractions
+
+    Consider a connected macro operator contraction [(0, 1), (1, 0), (1, 2, 3, 4)].
+    The target complete contractions needs three 1-body and one 2-body terms: target = {1: 3, 2: 1}.
+    This function will generate
+        [(1, 2, 3, 4), (0, 1), (0, 1), (1, 0)]
+        [(1, 2, 3, 4), (0, 1), (1, 0), (1, 0)]
+    """
+    if any(v > n_body_count[k] for k, v in target.items()):
+        return
+
+    if len(choices) == 0:
+        yield chosen
+    else:
+        # explore
+        element = choices[-1]
+        n_body = len(element) // 2
+
+        # include this macro contraction (i.e., tuple of macro operator indices) element
+        chosen.append(element)
+        target[n_body] -= 1
+        contraction_count[element] -= 1
+        n_body_count[n_body] -= 1
+
+        # filter choices when no longer need n_body terms (i.e. target[n_body] == 0) or remainder is zero
+        choices_filtered = choices
+        if target[n_body] == 0:
+            choices_filtered = [i for i in choices if len(i) // 2 != n_body]
+        else:
+            if contraction_count[element] == 0:
+                choices_filtered = choices[:-1]
+
+        yield from autocomplete_macro_contractions_backtrack(choices_filtered, target,
+                                                             contraction_count, n_body_count, chosen)
+
+        # not include this element
+        chosen.pop()
+        target[n_body] += 1
+        contraction_count[element] += 1
+        n_body_count[n_body] += 1
+
+        # remove this element for further exploring
+        temp = contraction_count[element]
+        n_body_count[n_body] -= contraction_count[element]
+        contraction_count[element] = 0
+
+        yield from autocomplete_macro_contractions_backtrack(choices[:-1], target,
+                                                             contraction_count, n_body_count, chosen)
+
+        n_body_count[n_body] += temp
+        contraction_count[element] = temp
 
 
 def generate_elementary_contractions(ops_list, max_cu=3):

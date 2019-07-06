@@ -287,23 +287,12 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
                         else:
                             partitions = used_integer_partitions[n_fill]
 
-                        cre_available = [sq_op.n_cre for sq_op in ops_list]
-                        ann_available = [sq_op.n_ann for sq_op in ops_list]
-                        for con in macro:
-                            n_body = len(con) // 2
-                            for i in con[:n_body]:
-                                cre_available[i] -= 1
-                            for i in con[n_body:]:
-                                ann_available[i] -= 1
-
                         # TODO: some more filtering
                         for part in partitions:
                             print(macro, part)
-                            for macro_extra in autocomplete_macro_contractions_backtrack(macro, part, [], {**count_con},
-                                                                                         {**count_n_body},
-                                                                                         cre_available[:],
-                                                                                         ann_available[:]):
-                                macro_complete = macro + macro_extra
+                            for macro_addon in autocomplete_macro_contractions_backtrack(macro, part, [], {**count_con},
+                                                                                         {**count_n_body}):
+                                macro_complete = macro + macro_addon
                                 print("choose multiple", macro_complete)
 
 
@@ -475,8 +464,7 @@ def compute_incompatible_elementary_contractions_list(elementary_contractions):
     return incompatible_elementary
 
 
-def autocomplete_macro_contractions_backtrack(choices, target, chosen, contraction_count, n_body_count,
-                                              cre_available, ann_available):
+def autocomplete_macro_contractions_backtrack(choices, target, chosen, contraction_count, n_body_count):
     """
     Autocomplete the incomplete contractions from contracted_operator_backtrack_macro.
     :param choices: a connected macro operator contraction
@@ -484,8 +472,6 @@ def autocomplete_macro_contractions_backtrack(choices, target, chosen, contracti
     :param chosen: the chosen macro operator contractions
     :param contraction_count: a Counter for the remaining macro contraction count, i.e., {contraction: count}
     :param n_body_count: a Counter for the remaining n_body count (store this to avoid recompute from contraction_count)
-    :param cre_available: a list of numbers of micro creation operators for each macro operator
-    :param ann_available: a list of numbers of micro annihilation operators for each macro operator
 
     Consider a connected macro operator contraction [(0, 1), (1, 0), (1, 2, 3, 4)].
     The target complete contractions needs three 1-body and one 2-body terms: target = {1: 3, 2: 1}.
@@ -493,7 +479,6 @@ def autocomplete_macro_contractions_backtrack(choices, target, chosen, contracti
         [(1, 2, 3, 4), (0, 1), (0, 1), (1, 0)]
         [(1, 2, 3, 4), (0, 1), (1, 0), (1, 0)]
     """
-    # TODO: need to filter out
     if any(v > n_body_count[k] for k, v in target.items()):
         return
 
@@ -503,7 +488,6 @@ def autocomplete_macro_contractions_backtrack(choices, target, chosen, contracti
         # explore
         element = choices[-1]
         n_body = len(element) // 2
-        cre_count, ann_count = Counter(element[:n_body]), Counter(element[n_body:])
 
         # include this macro contraction (i.e., tuple of macro operator indices) element
         chosen.append(element)
@@ -519,17 +503,8 @@ def autocomplete_macro_contractions_backtrack(choices, target, chosen, contracti
             if contraction_count[element] == 0:
                 choices_filtered = choices[:-1]
 
-        cre_available_new, ann_available_new = cre_available[:], ann_available[:]
-        for k, v in cre_count.items():
-            cre_available_new[k] -= v
-        for k, v in ann_count.items():
-            ann_available_new[k] -= v
-        choices_filtered = [con for con in choices_filtered
-                            if all(cre_available_new[cre] != 0 for cre in con[:n_body])
-                            and all(ann_available_new[ann] != 0 for ann in con[n_body:])]
-        print(choices_filtered, target, chosen)
         yield from autocomplete_macro_contractions_backtrack(choices_filtered, target, chosen, contraction_count,
-                                                             n_body_count, cre_available_new, ann_available_new)
+                                                             n_body_count)
 
         # not include this element
         chosen.pop()
@@ -543,7 +518,7 @@ def autocomplete_macro_contractions_backtrack(choices, target, chosen, contracti
         contraction_count[element] = 0
 
         yield from autocomplete_macro_contractions_backtrack(choices[:-1], target, chosen, contraction_count,
-                                                             n_body_count, cre_available, ann_available)
+                                                             n_body_count)
 
         n_body_count[n_body] += temp
         contraction_count[element] = temp

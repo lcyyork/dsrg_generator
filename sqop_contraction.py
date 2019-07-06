@@ -256,11 +256,9 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
 
 
         # backtrack on elementary contracted macro operators
-        for macro in contracted_operator_backtrack_macro(elementary_contractions_macro, [],
-                                                         max_n_con, 0,
+        for macro in contracted_operator_backtrack_macro(elementary_contractions_macro, [], (min_n_con, max_n_con), 0,
                                                          [sq_op.n_cre for sq_op in ops_list],
-                                                         [sq_op.n_ann for sq_op in ops_list],
-                                                         set(), True):
+                                                         [sq_op.n_ann for sq_op in ops_list], set(), True):
             n_con_one_sweep = sum(len(i) for i in macro)
             min_n_con = max(n_indices - max_n_open, n_con_one_sweep)
 
@@ -329,13 +327,13 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
     # TODO: translate contractions and return results
 
 
-def contracted_operator_backtrack_macro(available, chosen, n_con_max, n_con_so_far,
+def contracted_operator_backtrack_macro(available, chosen, n_con, n_con_so_far,
                                         cre_available, ann_available, ops_so_far, all_cu_so_far):
     """
     Generate all possible connected macro operator contractions
     :param available: a list of unexplored elementary contracted macro operators (tuple of operator indices)
     :param chosen: a list of chosen contracted macro operators
-    :param n_con_max: the max number of contractions specified by the user
+    :param n_con: the (min, max) numbers of contractions specified by the user
     :param n_con_so_far: the number of contractions so far
     :param cre_available: a list of numbers of micro creation operators for each macro operator
     :param ann_available: a list of numbers of micro annihilation operators for each macro operator
@@ -366,19 +364,17 @@ def contracted_operator_backtrack_macro(available, chosen, n_con_max, n_con_so_f
           once pairwise contractions are all explored, we can terminate the entire process.
     """
     n_ops = len(cre_available)
-    # print(chosen, available)
 
     # base case, nothing to choose
     if len(available) == 0:
-        if len(ops_so_far) == n_ops:
+        if len(ops_so_far) == n_ops and n_con[0] <= n_con_so_far <= n_con[1]:
             yield chosen
     else:
         # explore when 1) number of contractions are not enough,
         #              2) previous contractions are not all cumulants
-        if n_con_so_far < n_con_max and (len(available[-1]) == 2 if n_con_so_far == 0 else not all_cu_so_far):
+        if n_con_so_far < n_con[1] and (len(available[-1]) == 2 if n_con_so_far == 0 else not all_cu_so_far):
 
             # choose an element
-            # temp = available.pop()
             temp = available[-1]
 
             temp_ops = set(temp)
@@ -395,23 +391,20 @@ def contracted_operator_backtrack_macro(available, chosen, n_con_max, n_con_so_f
 
                 available_new = _prune_available_contracted_operator(available, cre_available, ann_available,
                                                                      cre_count, ann_count)
-                print(available_new)
 
                 yield from contracted_operator_backtrack_macro(available_new[0], chosen,
-                                                               n_con_max, n_con_so_far + 2 * n_body,
+                                                               n_con, n_con_so_far + 2 * n_body,
                                                                available_new[1], available_new[2],
                                                                ops_so_far | temp_ops, all_cu_so_far and n_body > 1)
 
                 chosen.pop()  # not include this element
 
             # not include this element
-            yield from contracted_operator_backtrack_macro(available[:-1], chosen, n_con_max, n_con_so_far,
+            yield from contracted_operator_backtrack_macro(available[:-1], chosen, n_con, n_con_so_far,
                                                            cre_available, ann_available, ops_so_far, all_cu_so_far)
-
-            # un-choose this element
-            # available.append(temp)
+            # un-choose this element: nothing to do here
         else:
-            yield from contracted_operator_backtrack_macro(list(), chosen, n_con_max, n_con_so_far,
+            yield from contracted_operator_backtrack_macro(list(), chosen, n_con, n_con_so_far,
                                                            cre_available, ann_available, ops_so_far, all_cu_so_far)
 
 
@@ -480,57 +473,57 @@ def compute_incompatible_elementary_contractions_list(elementary_contractions):
     return incompatible_elementary
 
 
-def autocomplete_macro_contractions_backtrack(choices, target, cre_limit, ann_limit, partial, n_con_sum):
-    """
-    Autocomplete the incomplete contractions from contracted_operator_backtrack_macro.
-    :param choices: a connected macro operator contraction
-    :param target: how many more contractions need to form a complete one
-    :param chosen: the chosen macro operator contractions
-    :param contraction_count: a Counter for the remaining macro contraction count, i.e., {contraction: count}
-    :param n_body_count: a Counter for the remaining n_body count (store this to avoid recompute from contraction_count)
-
-    Consider a connected macro operator contraction [(0, 1), (1, 0), (1, 2, 3, 4)].
-    The target complete contractions needs three 1-body and one 2-body terms: target = {1: 3, 2: 1}.
-    This function will generate
-        [(1, 2, 3, 4), (0, 1), (0, 1), (1, 0)]
-        [(1, 2, 3, 4), (0, 1), (1, 0), (1, 0)]
-    """
-    if n_con_sum > target[1]:
-        return
-
-    if len(choices) == 0:
-        yield partial
-    else:
-        # explore
-        con = choices[-1]
-        n_body = len(con) // 2
-        cre_count, ann_count = Counter(con[:n_body]), Counter(con[n_body:])
-
-        # include only when both cre and ann won't exceed the limit
-        if all(cre_limit[k] - v >= 0 for k, v in cre_count.items()) and \
-           all(ann_limit[k] - v >= 0 for k, v in ann_count.items()):
-
-            # include this element
-            partial[con] += 1
-            n_con_sum += 2 * n_body
-
-            # print("before prune", choices, partial)
-            available_new = _prune_available_contracted_operator(choices, cre_limit, ann_limit, cre_count, ann_count)
-            # print("after prune", available_new)
-
-            yield from autocomplete_macro_contractions_backtrack(available_new[0], target, available_new[1],
-                                                                 available_new[2], partial, n_con_sum)
-
-            # not include this element
-            partial[con] -= 1
-            n_con_sum -= 2 * n_body
-
-        # not include this element
-        # print("not include", choices, partial)
-        yield from autocomplete_macro_contractions_backtrack(choices[:-1], target, cre_limit, ann_limit, partial, n_con_sum)
-
-        # un-choose this element
-        # choices.append(con)
+# def autocomplete_macro_contractions_backtrack(choices, target, cre_limit, ann_limit, partial, n_con_sum):
+#     """
+#     Autocomplete the incomplete contractions from contracted_operator_backtrack_macro.
+#     :param choices: a connected macro operator contraction
+#     :param target: how many more contractions need to form a complete one
+#     :param chosen: the chosen macro operator contractions
+#     :param contraction_count: a Counter for the remaining macro contraction count, i.e., {contraction: count}
+#     :param n_body_count: a Counter for the remaining n_body count (store this to avoid recompute from contraction_count)
+#
+#     Consider a connected macro operator contraction [(0, 1), (1, 0), (1, 2, 3, 4)].
+#     The target complete contractions needs three 1-body and one 2-body terms: target = {1: 3, 2: 1}.
+#     This function will generate
+#         [(1, 2, 3, 4), (0, 1), (0, 1), (1, 0)]
+#         [(1, 2, 3, 4), (0, 1), (1, 0), (1, 0)]
+#     """
+#     if n_con_sum > target[1]:
+#         return
+#
+#     if len(choices) == 0:
+#         yield partial
+#     else:
+#         # explore
+#         con = choices[-1]
+#         n_body = len(con) // 2
+#         cre_count, ann_count = Counter(con[:n_body]), Counter(con[n_body:])
+#
+#         # include only when both cre and ann won't exceed the limit
+#         if all(cre_limit[k] - v >= 0 for k, v in cre_count.items()) and \
+#            all(ann_limit[k] - v >= 0 for k, v in ann_count.items()):
+#
+#             # include this element
+#             partial[con] += 1
+#             n_con_sum += 2 * n_body
+#
+#             # print("before prune", choices, partial)
+#             available_new = _prune_available_contracted_operator(choices, cre_limit, ann_limit, cre_count, ann_count)
+#             # print("after prune", available_new)
+#
+#             yield from autocomplete_macro_contractions_backtrack(available_new[0], target, available_new[1],
+#                                                                  available_new[2], partial, n_con_sum)
+#
+#             # not include this element
+#             partial[con] -= 1
+#             n_con_sum -= 2 * n_body
+#
+#         # not include this element
+#         # print("not include", choices, partial)
+#         yield from autocomplete_macro_contractions_backtrack(choices[:-1], target, cre_limit, ann_limit, partial, n_con_sum)
+#
+#         # un-choose this element
+#         # choices.append(con)
 
 
 # def autocomplete_macro_contractions_backtrack(choices, target, chosen, contraction_count, n_body_count):

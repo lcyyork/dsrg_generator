@@ -220,9 +220,15 @@ def compute_elementary_contractions_half_cumulant(pure_ops_list, max_cu):
 
 class ElementaryContractionCategorized:
     def __init__(self, ele_con_categorized, category_sequence):
+        """
+        Categorized elementray contractions and related methods.
+        :param ele_con_categorized: {(connected op indices): a list of Cumulant/HoleDensity}
+        :param category_sequence: a list of connected op indices
+        """
         self._ele_con = ele_con_categorized
         self._categories = category_sequence
 
+        # starting index (when contractions are flatten to a list) for each category
         self._i_start = [0] + list(accumulate([len(ele_con_categorized[c]) for c in category_sequence]))[:-1]
         self._i_start_map = {c: start for c, start in zip(category_sequence, self._i_start)}
 
@@ -235,16 +241,33 @@ class ElementaryContractionCategorized:
         return self._categories
 
     def encode(self, category, shift):
+        """
+        Encode a contraction according to its category and relative index in that category.
+        :param category: a tuple of connected operator indices
+        :param shift: relative index in the category
+        :return: code (the index when ele_con is flatten to a list)
+        """
         return self._i_start_map[category] + shift
 
     def find_category(self, code):
+        """
+        Find the category of a code computed from encode function.
+        :param code: code generated from encode function
+        :return: the category where the code belongs to
+        """
         i = bisect_right(self._i_start, code) - 1
         return self.categories[i]
 
     def category_range(self, category):
+        """ Return the code range for the input category. """
         return range(self._i_start_map[category], self._i_start_map[category] + len(self.ele_con[category]))
 
     def decode(self, code):
+        """
+        Decode the input code.
+        :param code: code generated from encode function
+        :return: the corresponding contraction (Cumulant/HoleDensity)
+        """
         i = bisect_right(self._i_start, code) - 1
         c = self.categories[i]
         shift = code - self._i_start[i]
@@ -275,14 +298,27 @@ class ElementaryContractionCategorized:
         return out
 
     def composite_contractions(self, target, compatible=None):
+        """
+        Compute the composite contractions between elementary contractions.
+        :param target: a Counter of {(connected op indices): count}
+        :param compatible: compatible elementary contractions {code1: [codes compatible to code1]}
+        :return: an iterator of "coded" composite contractions
+        """
         if compatible is None:
             compatible = self.compatible_elementary_contractions(target.keys())
 
         choices = set(chain(*[self.category_range(k) for k in target.keys()]))
 
-        return self._composite_contractions_backtrack(choices, target, compatible)
+        return self.composite_contractions_backtrack(choices, target, compatible, [])
 
-    def _composite_contractions_backtrack(self, choices, target, compatible, chosen=[]):
+    def composite_contractions_backtrack(self, choices, target, compatible, chosen):
+        """
+        Compute the composite contractions.
+        :param choices: a set of coded contractions
+        :param target: a Counter of {(connected op indices): count}
+        :param compatible: compatible elementary contractions
+        :param chosen: a list of coded contractions that satisfies the target condition
+        """
         available = {i: 0 for i in target.keys()}
         for con in choices:
             available[self.find_category(con)] += 1
@@ -304,13 +340,13 @@ class ElementaryContractionCategorized:
             if target[category] == 0:
                 choices_new -= set(self.category_range(category))
 
-            yield from self._composite_contractions_backtrack(choices_new, target, compatible, chosen)
+            yield from self.composite_contractions_backtrack(choices_new, target, compatible, chosen)
 
             # not include
             chosen.pop()
             target[category] += 1
 
-            yield from self._composite_contractions_backtrack(choices, target, compatible, chosen)
+            yield from self.composite_contractions_backtrack(choices, target, compatible, chosen)
 
             # un-explore
             choices.add(con)

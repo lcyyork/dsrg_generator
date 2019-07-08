@@ -40,6 +40,7 @@ Then we combine different elementary contractions to obtain composite contractio
 """
 
 import multiprocessing
+import sys
 from bisect import bisect_right
 from collections import defaultdict, Counter
 from itertools import combinations, product, chain, accumulate
@@ -277,6 +278,9 @@ class ElementaryContractionCategorized:
     def categories(self):
         return self._categories
 
+    def size(self):
+        return self._i_start[-1] + len(self.ele_con[self.categories[-1]])
+
     def encode(self, category, shift):
         """
         Encode a contraction according to its category and relative index in that category.
@@ -422,6 +426,8 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
         # important to put pairwise contractions at the end due to contracted_operator_backtrack_macro
         elementary_sequence = sorted(elementary_contractions.keys(), key=lambda x: (len(x), x), reverse=True)
         ele_con = ElementaryContractionCategorized(elementary_contractions, elementary_sequence)
+        if ele_con.size() > 1000:
+            sys.setrecursionlimit(ele_con.size())
 
         # compatible contractions
         compatible = ele_con.compatible_elementary_contractions()
@@ -461,14 +467,19 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
         elementary_contractions = compute_elementary_contractions_list(ops_list, max_cu)
         compatible = compute_compatible_elementary_contractions_list(elementary_contractions)
 
+        n_ele_con = len(elementary_contractions)
+        if n_ele_con > 1000:
+            sys.setrecursionlimit(n_ele_con)
+
         if n_process == 1:
-            for con in composite_contractions_backtrack(set(range(len(elementary_contractions))), set(), compatible,
-                                                        0, elementary_contractions, (min_n_con, max_n_con)):
+            for con in composite_contractions_backtrack(set(range(n_ele_con)), set(), compatible, 0,
+                                                        elementary_contractions, (min_n_con, max_n_con)):
                 yield process_composite_contractions(con, elementary_contractions, n_indices, expand_hole,
                                                      base_order_map, upper_indices_set, lower_indices_set)
         else:
             composite = [list(i) for i in composite_contractions_backtrack(set(range(len(elementary_contractions))),
-                                                                           set(), compatible, 0, elementary_contractions,
+                                                                           set(), compatible, 0,
+                                                                           elementary_contractions,
                                                                            (min_n_con, max_n_con))]
             n_process = min(n_process, multiprocessing.cpu_count())
             with multiprocessing.Pool(n_process, maxtasksperchild=1000) as pool:

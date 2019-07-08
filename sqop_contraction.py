@@ -221,7 +221,7 @@ def compute_elementary_contractions_half_cumulant(pure_ops_list, max_cu):
 class ElementaryContractionCategorized:
     def __init__(self, ele_con_categorized, category_sequence):
         self._ele_con = ele_con_categorized
-        self._category = category_sequence
+        self._categories = category_sequence
 
         self._i_start = [0] + list(accumulate([len(ele_con_categorized[c]) for c in category_sequence]))[:-1]
         self._i_start_map = {c: start for c, start in zip(category_sequence, self._i_start)}
@@ -231,17 +231,89 @@ class ElementaryContractionCategorized:
         return self._ele_con
 
     @property
-    def category(self):
-        return self._category
+    def categories(self):
+        return self._categories
 
     def encode(self, category, shift):
         return self._i_start_map[category] + shift
 
+    def find_category(self, code):
+        i = bisect_right(self._i_start, code) - 1
+        return self.categories[i]
+
+    def category_range(self, category):
+        return range(self._i_start_map[category], self._i_start_map[category] + len(self.ele_con[category]))
+
     def decode(self, code):
         i = bisect_right(self._i_start, code) - 1
-        c = self.category[i]
+        c = self.categories[i]
         shift = code - self._i_start[i]
         return self.ele_con[c][shift]
+
+    def compatible_elementary_contractions(self, categories=None):
+        """
+        Compute compatible elementary contractions.
+        :param categories: a list of contraction categories
+        :return: a dictionary of {contraction index (encoded): a set of indices (encoded) of compatible contractions}
+        """
+        if categories is None:
+            categories = self.categories
+
+        out = defaultdict(set)
+
+        for i_c, c1 in enumerate(categories):
+            for i, ele_i in enumerate(self.ele_con[c1]):
+                i_encode = self.encode(c1, i)
+
+                for c2 in categories[i_c:]:
+                    for j, ele_j in enumerate(self.ele_con[c2]):
+
+                        if not ele_i.any_overlapped_indices(ele_j):
+                            j_encode = self.encode(c2, j)
+                            out[i_encode].add(j_encode)
+                            out[j_encode].add(i_encode)
+        return out
+
+    def composite_contractions(self, target, compatible=None):
+        if compatible is None:
+            compatible = self.compatible_elementary_contractions(target.keys())
+
+        choices = set(chain(*[self.category_range(k) for k in target.keys()]))
+
+        return self._composite_contractions_backtrack(choices, target, compatible)
+
+    def _composite_contractions_backtrack(self, choices, target, compatible, chosen=[]):
+        available = {i: 0 for i in target.keys()}
+        for con in choices:
+            available[self.find_category(con)] += 1
+        if any(target[c] > available[c] for c in target.keys()):
+            return
+
+        if len(choices) == 0:
+            yield chosen
+        else:
+            # explore
+            con = choices.pop()
+            category = self.find_category(con)
+
+            # include
+            chosen.append(con)
+            target[category] -= 1
+
+            choices_new = choices.intersection(compatible[con])
+            if target[category] == 0:
+                choices_new -= set(self.category_range(category))
+
+            yield from self._composite_contractions_backtrack(choices_new, target, compatible, chosen)
+
+            # not include
+            chosen.pop()
+            target[category] += 1
+
+            yield from self._composite_contractions_backtrack(choices, target, compatible, chosen)
+
+            # un-explore
+            choices.add(con)
 
 
 def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0,
@@ -276,50 +348,22 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
         ele_con = ElementaryContractionCategorized(elementary_contractions,
                                                    sorted(elementary_contractions.keys(), key=lambda x: (len(x), x),
                                                           reverse=True))
-
-        # elementary_contractions_macro = sorted(elementary_contractions.keys(), key=lambda x: (len(x), x), reverse=True)
         # for k, v in elementary_contractions.items():
         #     print(k, v)
         # print(ele_con.category)
         # print(list(accumulate(len(v) for v in elementary_contractions.values())))
 
-        # TODO: figure out the incompatible contractions
-        # incompatible_elementary = compute_incompatible_elementary_contractions_categorized(elementary_contractions,
-        #                                                                                    ele_con.encode)
-        # print(list(accumulate(len(v) for v in incompatible_elementary.values())))
-
-        compatible = compute_compatible_elementary_contractions_categorized(elementary_contractions,
-                                                                                           ele_con.encode)
-        print(compatible)
-        # print(ele_con._i_start)
-        # print(ele_con._i_start_map)
-        # for k, v in compatible.items():
-        #     for i in v:
-        #         print(k, i)
-        #         print(ele_con.decode(k), ele_con.decode(i))
+        # compatible contractions
+        compatible = ele_con.compatible_elementary_contractions()
+        # print(compatible)
 
         # backtrack on elementary contracted macro operators
-        for macro in contracted_operator_backtrack_macro(ele_con.category, [], (min_n_con, max_n_con), 0,
+        for macro in contracted_operator_backtrack_macro(ele_con.categories, [], (min_n_con, max_n_con), 0,
                                                          [sq_op.n_cre for sq_op in ops_list],
                                                          [sq_op.n_ann for sq_op in ops_list], set(), True):
             print("macro", macro)
-            # for i in composite_contractions_categorized_backtrack(macro,
-            #                                                       {k: set(range(len(elementary_contractions[k]))) for k in macro},
-            #                                                       incompatible_elementary, []):
-            #     print(i)
-            # n_con_one_sweep = sum(len(i) for i in macro)
-            # min_n_con = max(n_indices - max_n_open, n_con_one_sweep)
-            #
-            # cre_limit, ann_limit = [sq_op.n_cre for sq_op in ops_list], [sq_op.n_ann for sq_op in ops_list]
-            # for con in macro:
-            #     n_body = len(con) // 2
-            #     for i in con[:n_body]:
-            #         cre_limit[i] -= 1
-            #     for i in con[n_body:]:
-            #         ann_limit[i] -= 1
-            #
-            # print(Counter(macro))
-
+            for i in ele_con.composite_contractions(Counter(macro), compatible):
+                print(i)
 
 
 
@@ -459,59 +503,6 @@ def _prune_available_contracted_operator(available, cre_available, ann_available
     return available_pruned, cre_available_new, ann_available_new
 
 
-def compute_incompatible_elementary_contractions_categorized(elementary_contractions, encoding_func):
-    """
-    Compute incompatible elementary contractions.
-    :param elementary_contractions: elementary contractions generated by compute_elementary_contractions_categorized
-    :param encoding_func: encoding function that takes (category, relative index) and spit out a encoded integer
-    :return: a dictionary of {contraction index (encoded): a set of indices (encoded) of incompatible contractions}
-    """
-    out = defaultdict(set)
-    macros = list(elementary_contractions.keys())
-
-    for i_c, c1 in enumerate(macros):
-        cre1, ann1 = set(c1[:len(c1) // 2]), set(c1[len(c1) // 2:])
-
-        for c2 in macros[i_c:]:
-            cre2, ann2 = set(c2[:len(c2) // 2]), set(c2[len(c2) // 2:])
-
-            if cre1.isdisjoint(cre2) and ann1.isdisjoint(ann2):
-                continue
-            else:
-                for i, ele_i in enumerate(elementary_contractions[c1]):
-                    i_encode = encoding_func(c1, i)
-                    for j, ele_j in enumerate(elementary_contractions[c2]):
-                        if ele_i.any_overlapped_indices(ele_j):
-                            j_encode = encoding_func(c2, j)
-                            out[i_encode].add(j_encode)
-                            out[j_encode].add(i_encode)
-    return out
-
-
-def compute_compatible_elementary_contractions_categorized(elementary_contractions, encoding_func):
-    """
-    Compute compatible elementary contractions.
-    :param elementary_contractions: elementary contractions generated by compute_elementary_contractions_categorized
-    :param encoding_func: encoding function that takes (category, relative index) and spit out a encoded integer
-    :return: a dictionary of {contraction index (encoded): a set of indices (encoded) of incompatible contractions}
-    """
-    out = defaultdict(set)
-    macros = list(elementary_contractions.keys())
-
-    for i_c, c1 in enumerate(macros):
-
-        for c2 in macros[i_c:]:
-
-            for i, ele_i in enumerate(elementary_contractions[c1]):
-                i_encode = encoding_func(c1, i)
-                for j, ele_j in enumerate(elementary_contractions[c2]):
-                    if not ele_i.any_overlapped_indices(ele_j):
-                        j_encode = encoding_func(c2, j)
-                        out[i_encode].add(j_encode)
-                        out[j_encode].add(i_encode)
-    return out
-
-
 def compute_incompatible_elementary_contractions_list(elementary_contractions):
     """
     Compute incompatible elementary contractions.
@@ -525,26 +516,6 @@ def compute_incompatible_elementary_contractions_list(elementary_contractions):
                 incompatible_elementary[i].add(j)
                 incompatible_elementary[j].add(i)
     return incompatible_elementary
-
-
-def composite_contractions_categorized_backtrack(macro_contractions, choices, incompatible, chosen):
-    if len(macro_contractions) == 0:
-    # if all(len(v) for v in choices.values()) == 0:
-        yield chosen
-    else:
-        category = macro_contractions.pop()
-        element = choices[category].pop()
-
-        chosen.append((category, element))
-        yield from composite_contractions_categorized_backtrack(macro_contractions,
-                                                                {k: v - incompatible[category][element][k] for k, v in choices.items()},
-                                                                incompatible, chosen)
-
-        chosen.pop()
-        yield from composite_contractions_categorized_backtrack(macro_contractions, choices, incompatible, chosen)
-
-        macro_contractions.append(category)
-        choices[category].add(element)
 
 
 def generate_elementary_contractions(ops_list, max_cu=3):

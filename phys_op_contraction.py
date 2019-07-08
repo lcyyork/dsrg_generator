@@ -18,7 +18,7 @@ from IndicesPair import make_indices_pair
 from SQOperator import make_sqop, SecondQuantizedOperator
 from Tensor import make_tensor_preset, ClusterAmplitude
 from Term import Term
-from sqop_contraction import generate_operator_contractions, generate_operator_contractions_new
+# from sqop_contraction import generate_operator_contractions, generate_operator_contractions_new
 from Timer import Timer
 
 

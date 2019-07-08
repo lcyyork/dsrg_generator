@@ -368,7 +368,7 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
     max_cu_allowed = check_max_cu(ops_list, max_cu)
 
     # original ordering of the second-quantized operators
-    base_order_indices = []
+    base_order_indices = list()
     upper_indices_set, lower_indices_set = set(), set()
     for sq_op in ops_list:
         base_order_indices += sq_op.cre_ops.indices + sq_op.ann_ops.indices[::-1]
@@ -381,44 +381,105 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
 
     if for_commutator:
         elementary_contractions = compute_elementary_contractions_categorized(ops_list, max_cu_allowed)
-        ele_con = ElementaryContractionCategorized(elementary_contractions,
-                                                   sorted(elementary_contractions.keys(), key=lambda x: (len(x), x),
-                                                          reverse=True))
-        # for k, v in elementary_contractions.items():
-        #     print(k, v)
-        # print(ele_con.category)
-        # print(list(accumulate(len(v) for v in elementary_contractions.values())))
+
+        # important to put pairwise contractions at the end due to contracted_operator_backtrack_macro
+        elementary_sequence = sorted(elementary_contractions.keys(), key=lambda x: (len(x), x), reverse=True)
+        ele_con = ElementaryContractionCategorized(elementary_contractions, elementary_sequence)
 
         # compatible contractions
         compatible = ele_con.compatible_elementary_contractions()
-        # print(compatible)
 
-        # backtrack on elementary contracted macro operators
-        for macro in contracted_operator_backtrack_macro(ele_con.categories, [], (min_n_con, max_n_con), 0,
-                                                         [sq_op.n_cre for sq_op in ops_list],
-                                                         [sq_op.n_ann for sq_op in ops_list], set(), True):
-            print("macro", macro)
-            for i in ele_con.composite_contractions(Counter(macro), compatible):
-                print(i)
+        # compute composite contractions
+        #   1) compute valid combinations of categories of elementary contractions (backtrack algorithm)
+        #   2) select elementary contractions for a given combination of categories (backtrack algorithm)
+        #   3) translate elementary contractions to a list of Cumulant/HoleDensity
+        #   4) expand HoleDensity to Kronecker delta - 1-body Cumulant
+        #   5) determine sign and open (un-contracted) cre/ann operators
+
+        if n_process == 1:
+            for comp_cat in contracted_operator_backtrack_macro(ele_con.categories, [], (min_n_con, max_n_con), 0,
+                                                                [sq_op.n_cre for sq_op in ops_list],
+                                                                [sq_op.n_ann for sq_op in ops_list], set(), True):
+                yield process_composite_categorized(comp_cat, ele_con, compatible, upper_indices_set,
+                                                    lower_indices_set, base_order_map, n_indices, expand_hole)
+        else:
+            # save composite categories for parallel computation
+            comp_cats_list = [i[:] for i in
+                              contracted_operator_backtrack_macro(ele_con.categories, [], (min_n_con, max_n_con), 0,
+                                                                  [sq_op.n_cre for sq_op in ops_list],
+                                                                  [sq_op.n_ann for sq_op in ops_list], set(), True)]
+            n_process = min(n_process, multiprocessing.cpu_count())
+            with multiprocessing.Pool(n_process, maxtasksperchild=1000) as pool:
+                tasks = list()
+                for comp_cat in comp_cats_list:
+                    tasks.append((process_composite_categorized, (comp_cat, ele_con, compatible, upper_indices_set,
+                                                                  lower_indices_set, base_order_map, n_indices,
+                                                                  expand_hole)))
+                imap_unordered_it = pool.imap_unordered(calculatestar, tasks)
+                for results in imap_unordered_it:
+                    yield results
 
 
-
+        # # backtrack on elementary contracted macro operators (save these for parallel computation)
+        # composite_cats = [i[:] for i in contracted_operator_backtrack_macro(ele_con.categories, [], (min_n_con, max_n_con),
+        #                                                                 0, [sq_op.n_cre for sq_op in ops_list],
+        #                                                                 [sq_op.n_ann for sq_op in ops_list], set(), True)]
         #
-        # # TODO: generate actual contractions
-        # incompatible_contractions = defaultdict(list)
-        # for ops_ids in composite_contractions_ops_id[:200]:
-        #     print(ops_ids)
-        #     n_ops = len(ops_ids)
-        #     size = sum([len(i) for i in ops_ids])
-        #
-        #     print(max(n_indices - max_n_open - size, 0) // 2, (n_indices - min_n_open - size) // 2)
+        # for com_cat in composite_cats:
+        #     for i in process_composite_categorized(com_cat, ele_con, compatible, upper_indices_set, lower_indices_set,
+        #                                            base_order_map, n_indices, expand_hole):
+        #         print(i)
 
+        # for macro in contracted_operator_backtrack_macro(ele_con.categories, [], (min_n_con, max_n_con), 0,
+        #                                                  [sq_op.n_cre for sq_op in ops_list],
+        #                                                  [sq_op.n_ann for sq_op in ops_list], set(), True):
+        #     # print("macro", macro)
+        #
+        #     # at this point I already know the number of open indices
+        #     n_open = n_indices - sum(len(i) for i in macro)
+        #     temp = list()
+        #
+        #     for coded_cons in ele_con.composite_contractions(Counter(macro), compatible):
+        #         # print(i)
+        #         contractions = [ele_con.decode(i) for i in coded_cons]
+        #         print(contractions)
+        #
+        #         # TODO: figure out ordering of contracted indices, caution: HoleDensity
+        #         current_order = list()
+        #         for con in contractions:
+        #             left, right = con.upper_indices, con.lower_indices
+        #             if isinstance(con, HoleDensity):
+        #                 left, right = right, left
+        #             current_order += left.indices + right.indices[::-1]
+        #
+        #         # TODO: sort open indices
+        #         if n_open != 0:
+        #             contracted = set(current_order)
+        #             open_upper = IndicesSpinOrbital(sorted(upper_indices_set - contracted))
+        #             open_lower = IndicesSpinOrbital(sorted(lower_indices_set - contracted))
+        #             current_order += open_upper.indices + open_lower.indices[::-1]
+        #         else:
+        #             open_upper, open_lower = IndicesSpinOrbital([]), IndicesSpinOrbital([])
+        #         sq_op = SecondQuantizedOperator(IndicesPair(open_upper, open_lower))
+        #
+        #         # TODO: figure out current ordering
+        #
+        #         # TODO: determine sign
+        #         sign = (-1) ** Permutation([base_order_map[i] for i in current_order]).inversions()
+        #
+        #         # TODO: expand hole density to delta - 1-cumulant
+        #         sign_densities = expand_hole_densities(contractions) if expand_hole else [(1, contractions)]
+        #
+        #         # TODO: append results
+        #         temp += [(sign * _s, cons, sq_op) for _s, cons in sign_densities]
+        #
+        #     print(temp)
 
     else:
         # TODO: use original implementation, need to include the non-contracted term
         elementary_contractions = compute_elementary_contractions_list(ops_list, max_cu)
 
-    # TODO: translate contractions and return results
+        # TODO: translate contractions and return results
 
 
 def contracted_operator_backtrack_macro(available, chosen, n_con, n_con_so_far,
@@ -537,6 +598,55 @@ def _prune_available_contracted_operator(available, cre_available, ann_available
             available_pruned.append(con_ops)
 
     return available_pruned, cre_available_new, ann_available_new
+
+
+def process_composite_categorized(com_cat, ele_con, compatible, upper_indices_set, lower_indices_set,
+                                  base_order_map, n_indices, expand_hole):
+    """
+    Process one composite categorized contraction.
+    :param com_cat: a list of connected operator indices
+    :param ele_con: an ElementaryContractionCategorized object
+    :param compatible: compatible elementary contractions
+    :param upper_indices_set: the set of all creation operators
+    :param lower_indices_set: the set of all annihilation operators
+    :param base_order_map: the Index map to ordering index
+    :param n_indices: the total number of cre and ann operators
+    :param expand_hole: expand hole densities to Kronecker delta minus one density if True
+    :return: a list of contractions in terms of (sign, list_of_densities, sq_op)
+    """
+    n_open = n_indices - sum(len(i) for i in com_cat)
+    out = list()
+
+    for coded_cons in ele_con.composite_contractions(Counter(com_cat), compatible):
+        contractions = [ele_con.decode(i) for i in coded_cons]
+
+        # cre/ann ordering of the current composite contraction
+        current_order = list()
+        for con in contractions:
+            left = con.lower_indices if isinstance(con, HoleDensity) else con.upper_indices
+            right = con.upper_indices if isinstance(con, HoleDensity) else con.lower_indices
+            current_order += left.indices + right.indices[::-1]
+
+        # sort open indices
+        if n_open != 0:
+            contracted = set(current_order)
+            open_upper = IndicesSpinOrbital(sorted(upper_indices_set - contracted))
+            open_lower = IndicesSpinOrbital(sorted(lower_indices_set - contracted))
+            current_order += open_upper.indices + open_lower.indices[::-1]
+        else:
+            open_upper, open_lower = IndicesSpinOrbital([]), IndicesSpinOrbital([])
+        sq_op = SecondQuantizedOperator(IndicesPair(open_upper, open_lower))
+
+        # determine sign of current ordering
+        sign = (-1) ** Permutation([base_order_map[i] for i in current_order]).inversions()
+
+        # expand hole density to delta - 1-cumulant
+        sign_densities = expand_hole_densities(contractions) if expand_hole else [(1, contractions)]
+
+        # append results
+        out += [(sign * _s, cons, sq_op) for _s, cons in sign_densities]
+
+    return out
 
 
 def compute_incompatible_elementary_contractions_list(elementary_contractions):

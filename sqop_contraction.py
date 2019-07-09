@@ -267,7 +267,7 @@ class ElementaryContractionCategorized:
         self._categories = category_sequence
 
         # starting index (when contractions are flatten to a list) for each category
-        self._i_start = [0] + list(accumulate([len(ele_con_categorized[c]) for c in category_sequence]))[:-1]
+        self._i_start = [0] + list(accumulate([len(ele_con_categorized[c]) for c in category_sequence[:-1]]))
         self._i_start_map = {c: start for c, start in zip(category_sequence, self._i_start)}
 
     @property
@@ -279,6 +279,8 @@ class ElementaryContractionCategorized:
         return self._categories
 
     def size(self):
+        if len(self.categories) == 0:
+            return 0
         return self._i_start[-1] + len(self.ele_con[self.categories[-1]])
 
     def encode(self, category, shift):
@@ -409,7 +411,7 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
     max_cu_allowed = check_max_cu(ops_list, max_cu)
 
     # original ordering of the second-quantized operators
-    base_order_indices = list()
+    base_order_indices = []
     upper_indices_set, lower_indices_set = set(), set()
     for sq_op in ops_list:
         base_order_indices += sq_op.cre_ops.indices + sq_op.ann_ops.indices[::-1]
@@ -422,6 +424,8 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
 
     if for_commutator:
         elementary_contractions = compute_elementary_contractions_categorized(ops_list, max_cu_allowed)
+        if len(elementary_contractions) == 0:
+            return []
 
         # important to put pairwise contractions at the end due to contracted_operator_backtrack_macro
         elementary_sequence = sorted(elementary_contractions.keys(), key=lambda x: (len(x), x), reverse=True)
@@ -454,7 +458,7 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
 
             n_process = min(n_process, multiprocessing.cpu_count())
             with multiprocessing.Pool(n_process, maxtasksperchild=1000) as pool:
-                tasks = list()
+                tasks = []
                 for comp_cat in comp_cats_list:
                     tasks.append((process_composite_categorized, (comp_cat, ele_con, compatible, upper_indices_set,
                                                                   lower_indices_set, base_order_map, n_indices,
@@ -477,13 +481,12 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
                 yield process_composite_contractions(con, elementary_contractions, n_indices, expand_hole,
                                                      base_order_map, upper_indices_set, lower_indices_set)
         else:
-            composite = [list(i) for i in composite_contractions_backtrack(set(range(len(elementary_contractions))),
-                                                                           set(), compatible, 0,
-                                                                           elementary_contractions,
-                                                                           (min_n_con, max_n_con))]
+            composite = [i[:] for i in composite_contractions_backtrack(set(range(len(elementary_contractions))),
+                                                                        set(), compatible, 0, elementary_contractions,
+                                                                        (min_n_con, max_n_con))]
             n_process = min(n_process, multiprocessing.cpu_count())
             with multiprocessing.Pool(n_process, maxtasksperchild=1000) as pool:
-                tasks = list()
+                tasks = []
                 for con in composite:
                     tasks.append((process_composite_contractions, (con, elementary_contractions, n_indices, expand_hole,
                                                                    base_order_map, upper_indices_set, lower_indices_set)
@@ -570,8 +573,8 @@ def contracted_operator_backtrack_macro(available, chosen, n_con, n_con_so_far,
                                                            cre_available, ann_available, ops_so_far, all_cu_so_far)
             # un-choose this element: nothing to do here
         else:
-            yield from contracted_operator_backtrack_macro(list(), chosen, n_con, n_con_so_far,
-                                                           cre_available, ann_available, ops_so_far, all_cu_so_far)
+            yield from contracted_operator_backtrack_macro([], chosen, n_con, n_con_so_far, cre_available,
+                                                           ann_available, ops_so_far, all_cu_so_far)
 
 
 def _prune_available_contracted_operator(available, cre_available, ann_available, cre_count, ann_count):
@@ -600,7 +603,7 @@ def _prune_available_contracted_operator(available, cre_available, ann_available
     if len(cre_zero_count_id) == 0 and len(ann_zero_count_id) == 0:
         available_pruned = available
     else:
-        available_pruned = list()
+        available_pruned = []
         for con_ops in available:
             if any(i_cre in cre_zero_count_id for i_cre in con_ops[:len(con_ops) // 2]):
                 continue
@@ -626,13 +629,13 @@ def process_composite_categorized(com_cat, ele_con, compatible, upper_indices_se
     :return: a list of contractions in terms of (sign, list_of_densities, sq_op)
     """
     n_open = n_indices - sum(len(i) for i in com_cat)
-    out = list()
+    out = []
 
     for coded_cons in ele_con.composite_contractions(Counter(com_cat), compatible):
         contractions = [ele_con.decode(i) for i in coded_cons]
 
         # cre/ann ordering of the current composite contraction
-        current_order = list()
+        current_order = []
         for con in contractions:
             left = con.lower_indices if isinstance(con, HoleDensity) else con.upper_indices
             right = con.upper_indices if isinstance(con, HoleDensity) else con.lower_indices

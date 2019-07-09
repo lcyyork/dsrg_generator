@@ -18,11 +18,19 @@ from IndicesPair import make_indices_pair
 from SQOperator import make_sqop, SecondQuantizedOperator
 from Tensor import make_tensor_preset, ClusterAmplitude
 from Term import Term
+from sqop_contraction import compute_operator_contractions
 # from sqop_contraction import generate_operator_contractions, generate_operator_contractions_new
 from Timer import Timer
 
 
 def HamiltonianOperator(k, start=0, indices_type='spin-orbital'):
+    """
+    Return a Hamiltonian operator.
+    :param k: body level
+    :param start: starting number of indices
+    :param indices_type: indices type
+    :return: a Term object
+    """
     coeff = factorial(k) ** 2
     r0, r1, r2 = start, start + k, start + 2 * k
     tensor = make_tensor_preset("Hamiltonian",
@@ -35,6 +43,18 @@ def HamiltonianOperator(k, start=0, indices_type='spin-orbital'):
 
 def ClusterOperator(k, start=0, excitation=True, name='T', scale_factor=1.0,
                     hole_label='h', particle_label='p', indices_type='spin-orbital'):
+    """
+    Return a cluster operator.
+    :param k: body level
+    :param start: starting number of indices
+    :param excitation: excitation operator if True
+    :param name: the name of this cluster operator
+    :param scale_factor: the scale factor, maybe useful when doing T - T^+
+    :param hole_label: label used to represent hole indices
+    :param particle_label: label used to represent particle indices
+    :param indices_type: indices type
+    :return: a Term object
+    """
     coeff = factorial(k) ** 2
     r0, r1 = start, start + k
     hole = [f"{hole_label}{i}" for i in range(r0, r1)]
@@ -60,7 +80,7 @@ def calculatestar(args):
 
 
 def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0,
-                   expand_hole=True, n_process=1):
+                   for_commutator=False, expand_hole=True, n_process=1):
     """
     Contract a list of Term objects.
     :param terms: a list of Term objects to be contracted
@@ -68,15 +88,15 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
     :param max_n_open: max number of open indices for contractions kept for return
     :param min_n_open: min number of open indices for contractions kept for return
     :param scale_factor: a scaling factor for the results
+    :param for_commutator: compute only non-zero terms for commutators if True
     :param expand_hole: expand HoleDensity to Kronecker - Cumulant if True
     :param n_process: number of processes launched for tensor canonicalization
     :return: a list of contracted and canonicalized Term objects
     """
-    out = list()
-    # print(terms)
-
     if len(terms) == 0:
         raise ValueError("size of terms cannot be zero.")
+
+    n_process = min(n_process, multiprocessing.cpu_count())
 
     coeff = float(scale_factor)
     tensors = []
@@ -91,46 +111,37 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
 
     if len(sq_ops_to_be_contracted) < 2:
         sq_op = sq_ops_to_be_contracted[0] if len(sq_ops_to_be_contracted) == 1 else terms[0].sq_op
-        out.append(Term(tensors, sq_op, coeff))
+        return [Term(tensors, sq_op, coeff)]
     else:
-        # start = timer()
-        contractions = generate_operator_contractions_new(sq_ops_to_be_contracted, max_cu,
-                                                          max_n_open, min_n_open, expand_hole, n_process)
-        # end = timer()
-        # print(f'contraction: {end - start:.6f}s ')
+        count = 0
+        out = []
+        contractions = []
 
-        n_contractions = len(contractions)
-        if n_contractions == 0:
-            return []
-        print(f'number of contractions: {n_contractions}')
+        for batch in compute_operator_contractions(sq_ops_to_be_contracted, max_cu, max_n_open, min_n_open,
+                                                   for_commutator, expand_hole, n_process):
+            count += len(batch)
+            contractions += batch
 
-        # start = timer()
+            if count % 5000 != 0:
+                continue
 
-        terms_k = list()
+            if n_process == 1:
+                temp = [Term(tensors + densities, sq_op, sign * coeff).canonicalize_sympy()
+                        for sign, densities, sq_op in contractions]
+            else:
+                with multiprocessing.Pool(n_process, maxtasksperchild=500) as pool:
+                    tasks = [(multiprocessing_canonicalize_contractions, (tensors + densities, sq_op, sign * coeff))
+                             for sign, densities, sq_op in contractions]
+                    imap_unordered_it = pool.imap_unordered(calculatestar, tasks)
+                    temp = [x for x in imap_unordered_it]
 
-        if n_process == 1:
-            for sign, densities, sq_op in contractions:
-                terms_k.append(Term(tensors + densities, sq_op, sign * coeff).canonicalize_sympy())
-        else:
-            n_process = min(n_process, multiprocessing.cpu_count())
-            with multiprocessing.Pool(n_process, maxtasksperchild=1000) as pool:
-                tasks = list()
-                for sign, densities, sq_op in contractions:
-                    tasks.append((multiprocessing_canonicalize_contractions,
-                                  (tensors + densities, sq_op, sign * coeff)))
-                imap_unordered_it = pool.imap_unordered(calculatestar, tasks)
-                # for i in imap_unordered_it:
-                #     print(i)
-                terms_k = [x for x in imap_unordered_it]
+            out += combine_terms(temp)
+            contractions = []
 
-        # end = timer()
-        # print(f'canonicalize: {end - start:.6f}s, ')
-        # start = timer()
-        out = combine_terms(terms_k)
-        # end = timer()
-        # print(f'combine: {end - start:.6f}s')
+        out += [Term(tensors + densities, sq_op, sign * coeff).canonicalize_sympy()
+                for sign, densities, sq_op in contractions]
 
-    return out
+        return combine_terms(out)
 
 
 def combine_terms(terms):
@@ -146,14 +157,14 @@ def combine_terms(terms):
         return []
 
     tensors_to_coeff = defaultdict(list)
-    tensors_to_term = dict()
+    tensors_to_term = {}
 
     for term in terms:
         name = " ".join(str(tensor) for tensor in term.list_of_tensors) + f" {term.sq_op}"
         tensors_to_term[name] = term
         tensors_to_coeff[name].append(term.coeff)
 
-    out = list()
+    out = []
     for name, term in tensors_to_term.items():
         term.coeff = sum(tensors_to_coeff[name])
         if abs(term.coeff) < 1.0e-15:
@@ -163,7 +174,7 @@ def combine_terms(terms):
 
 
 def single_commutator(left, right, max_cu=3, max_n_open=6, min_n_open=0,
-                      scale_factor=1.0, expand_hole=True, n_process=1):
+                      scale_factor=1.0, for_commutator=True, expand_hole=True, n_process=1):
     """
     Compute a single commutator of the form [left, right].
     :param left: left term
@@ -172,19 +183,20 @@ def single_commutator(left, right, max_cu=3, max_n_open=6, min_n_open=0,
     :param max_n_open: max number of open indices for contractions of each single commutator
     :param min_n_open: min number of open indices for contractions of each single commutator
     :param scale_factor: a scaling factor for the results
+    :param for_commutator: compute only non-zero terms for commutators if True
     :param expand_hole: expand HoleDensity to (Kronecker - Cumulant) if True
     :param n_process: number of processes launched for tensor canonicalization
     :return: a list of contracted canonicalized Term objects
     """
-    terms = contract_terms([left, right], max_cu, max_n_open, min_n_open,
-                           scale_factor, expand_hole, n_process)
-    terms += contract_terms([right, left], max_cu, max_n_open, min_n_open,
-                            -scale_factor, expand_hole, n_process)
+    terms = contract_terms([left, right], max_cu, max_n_open, min_n_open, scale_factor,
+                           for_commutator, expand_hole, n_process) \
+        + contract_terms([right, left], max_cu, max_n_open, min_n_open, -scale_factor,
+                         for_commutator, expand_hole, n_process)
     return combine_terms(terms)
 
 
-def recursive_single_commutator(terms, max_cu=3, max_n_open=6, min_n_open=0,
-                                max_n_open_final=6, min_n_open_final=0, expand_hole=True, n_process=1):
+def recursive_single_commutator(terms, max_cu=3, max_n_open=6, min_n_open=0, max_n_open_final=6, min_n_open_final=0,
+                                for_commutator=True, expand_hole=True, n_process=1):
     """
     Compute nested commutators using recursive single commutator formalism.
     :param terms: a list of terms, computed as [[...[[term_0, term_1], term_2], ...], term_k]
@@ -193,6 +205,7 @@ def recursive_single_commutator(terms, max_cu=3, max_n_open=6, min_n_open=0,
     :param min_n_open: min number of open indices for contractions of each single commutator
     :param max_n_open_final: max number of open indices for return
     :param min_n_open_final: min number of open indices for return
+    :param for_commutator: compute only non-zero terms for commutators if True
     :param expand_hole: expand HoleDensity to (Kronecker - Cumulant) if True
     :param n_process: number of processes launched for tensor canonicalization
     :return: a map of nested level to a list of contracted canonicalized Term objects
@@ -213,7 +226,7 @@ def recursive_single_commutator(terms, max_cu=3, max_n_open=6, min_n_open=0,
 
         for left in left_pool:
             out[i] += single_commutator(left, right, max_cu, max_n_open, min_n_open,
-                                        1.0, expand_hole, n_process)
+                                        1.0, for_commutator, expand_hole, n_process)
 
         out[i] = combine_terms(out[i])
         left_pool = out[i]
@@ -221,8 +234,8 @@ def recursive_single_commutator(terms, max_cu=3, max_n_open=6, min_n_open=0,
     return out
 
 
-def bch_cc_rsc(nested_level, cluster_levels, max_cu=3,
-               max_n_open=6, min_n_open=0, max_n_open_final=6, min_n_open_final=0,
+def bch_cc_rsc(nested_level, cluster_levels, max_cu=3, max_n_open=6, min_n_open=0,
+               max_n_open_final=6, min_n_open_final=0, for_commutator=True,
                expand_hole=True, single_reference=False, unitary=False, n_process=1):
     """
     Compute the BCH nested commutator in coupled cluster theory using recursive commutator formalism.
@@ -233,6 +246,7 @@ def bch_cc_rsc(nested_level, cluster_levels, max_cu=3,
     :param min_n_open: the min number of open indices for contractions of each single commutator
     :param max_n_open_final: max number of open indices for return
     :param min_n_open_final: min number of open indices for return
+    :param for_commutator: compute only non-zero terms for commutators if True
     :param expand_hole: expand HoleDensity to Kronecker minus Cumulant if True
     :param single_reference: use single-reference amplitudes if True
     :param unitary: use unitary formalism if True
@@ -269,7 +283,8 @@ def bch_cc_rsc(nested_level, cluster_levels, max_cu=3,
 
         for left in left_pool:
             for right in amps[i - 1]:
-                out[i] += single_commutator(left, right, max_cu, max_n_open, min_n_open, factor, expand_hole, n_process)
+                out[i] += single_commutator(left, right, max_cu, max_n_open, min_n_open,
+                                            factor, for_commutator, expand_hole, n_process)
 
         out[i] = combine_terms(out[i])
         left_pool = out[i]
@@ -279,7 +294,7 @@ def bch_cc_rsc(nested_level, cluster_levels, max_cu=3,
 
 # This function is not doing consistent things as described.
 def nested_commutator_lct(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0,
-                          expand_hole=True, n_process=1):
+                          for_commutator=True, expand_hole=True, n_process=1):
     """
     Compute the nested commutator of terms, i.e. [[...[[term_0, term_1], term_2], ...], term_k].
     :param terms: a list of terms
@@ -300,13 +315,13 @@ def nested_commutator_lct(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_fac
     def commutator_recursive(chosen_terms, unchosen_terms, sign, temp_out):
         if len(unchosen_terms) == 0:
             terms_local = contract_terms(chosen_terms, max_cu, max_n_open, min_n_open,
-                                         sign * scale_factor, expand_hole, n_process)
+                                         sign * scale_factor, for_commutator, expand_hole, n_process)
             temp_out += combine_terms(terms_local)
         else:
             commutator_recursive(chosen_terms + [unchosen_terms[0]], unchosen_terms[1:], sign, temp_out)
             commutator_recursive([unchosen_terms[0]] + chosen_terms, unchosen_terms[1:], -sign, temp_out)
 
-    out = list()
+    out = []
     commutator_recursive(terms[:1], terms[1:], 1, out)
 
     return combine_terms(out)
@@ -327,7 +342,7 @@ def sympy_nested_commutator_recursive(level, A, B):
 
 
 def nested_commutator_cc(nested_level, cluster_levels, max_cu=3, max_n_open=6, min_n_open=0,
-                         expand_hole=True, single_reference=False, unitary=False, n_process=1):
+                         for_commutator=True, expand_hole=True, single_reference=False, unitary=False, n_process=1):
     """
     Compute the BCH nested commutator in coupled cluster theory.
     :param nested_level: the level of nested commutator
@@ -335,6 +350,7 @@ def nested_commutator_cc(nested_level, cluster_levels, max_cu=3, max_n_open=6, m
     :param max_cu: max value of cumulant allowed for contraction
     :param max_n_open: the max number of open indices for contractions kept for return
     :param min_n_open: the min number of open indices for contractions kept for return
+    :param for_commutator: compute only non-zero terms for commutators if True
     :param expand_hole: expand HoleDensity to Kronecker minus Cumulant if True
     :param single_reference: use single-reference amplitudes if True
     :param unitary: use unitary formalism if True
@@ -349,7 +365,7 @@ def nested_commutator_cc(nested_level, cluster_levels, max_cu=3, max_n_open=6, m
         raise ValueError("Invalid content in cluster_operator (must be all integers)")
 
     scale_factor = 1.0/factorial(nested_level)
-    out = list()
+    out = []
 
     hole_label = 'c' if single_reference else 'h'
     particle_label = 'v' if single_reference else 'p'
@@ -387,7 +403,8 @@ def nested_commutator_cc(nested_level, cluster_levels, max_cu=3, max_n_open=6, m
             else:
                 list_of_terms.append(HamiltonianOperator(n_body))
 
-        out += contract_terms(list_of_terms, max_cu, max_n_open, min_n_open, factor, expand_hole, n_process)
+        out += contract_terms(list_of_terms, max_cu, max_n_open, min_n_open, factor,
+                              for_commutator, expand_hole, n_process)
 
     return combine_terms(out)
 

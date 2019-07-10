@@ -118,30 +118,42 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
         contractions = []
 
         for batch in compute_operator_contractions(sq_ops_to_be_contracted, max_cu, max_n_open, min_n_open,
-                                                   for_commutator, expand_hole, n_process):
+                                                   for_commutator, expand_hole, n_process=1):
             count += len(batch)
             contractions += batch
 
-            if count % 5000 != 0:
+            if count < 10000:
                 continue
 
-            if n_process == 1:
-                temp = [Term(tensors + densities, sq_op, sign * coeff).canonicalize_sympy()
-                        for sign, densities, sq_op in contractions]
-            else:
-                with multiprocessing.Pool(n_process, maxtasksperchild=500) as pool:
-                    tasks = [(multiprocessing_canonicalize_contractions, (tensors + densities, sq_op, sign * coeff))
-                             for sign, densities, sq_op in contractions]
-                    imap_unordered_it = pool.imap_unordered(calculatestar, tasks)
-                    temp = [x for x in imap_unordered_it]
-
-            out += combine_terms(temp)
+            out += canonicalize_contractions_batch(n_process, contractions, tensors, coeff)
             contractions = []
+            count = 0
 
-        out += [Term(tensors + densities, sq_op, sign * coeff).canonicalize_sympy()
-                for sign, densities, sq_op in contractions]
+        out += canonicalize_contractions_batch(n_process, contractions, tensors, coeff, False)
 
         return combine_terms(out)
+
+
+def canonicalize_contractions_batch(n_process, contractions, tensors, coeff, simplify=True):
+    """
+    Canonicalize a batch of contractions
+    :param n_process: number of processes launched for tensor canonicalization
+    :param contractions: a list of contractions [(sign, densities, sq_op)]
+    :param tensors: a list of tensors
+    :param coeff: a scale factor for all contractions
+    :param simplify: combine similar terms if True
+    :return: a list of simplified canonicalized terms
+    """
+    if n_process == 1:
+        temp = [Term(tensors + densities, sq_op, sign * coeff).canonicalize_sympy()
+                for sign, densities, sq_op in contractions]
+    else:
+        with multiprocessing.Pool(n_process, maxtasksperchild=1000) as pool:
+            tasks = [(multiprocessing_canonicalize_contractions, (tensors + densities, sq_op, sign * coeff))
+                     for sign, densities, sq_op in contractions]
+            imap_unordered_it = pool.imap_unordered(calculatestar, tasks)
+            temp = [x for x in imap_unordered_it]
+    return combine_terms(temp) if simplify else temp
 
 
 def combine_terms(terms):
@@ -293,38 +305,38 @@ def bch_cc_rsc(nested_level, cluster_levels, max_cu=3, max_n_open=6, min_n_open=
 
 
 # This function is not doing consistent things as described.
-def nested_commutator_lct(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0,
-                          for_commutator=True, expand_hole=True, n_process=1):
-    """
-    Compute the nested commutator of terms, i.e. [[...[[term_0, term_1], term_2], ...], term_k].
-    :param terms: a list of terms
-    :param max_cu: max level of cumulant
-    :param max_n_open: max number of open indices for contractions of each single commutator
-    :param min_n_open: min number of open indices for contractions of each single commutator
-    :param scale_factor: a scaling factor for the results
-    :param expand_hole: expand HoleDensity to Kronecker - Cumulant if True
-    :param n_process: number of processes launched for tensor canonicalization
-    :return: a list of contracted canonicalized Term objects
-    """
-    if len(terms) == 0:
-        raise ValueError("size of terms cannot be zero.")
-
-    if len(terms) == 1:
-        return terms
-
-    def commutator_recursive(chosen_terms, unchosen_terms, sign, temp_out):
-        if len(unchosen_terms) == 0:
-            terms_local = contract_terms(chosen_terms, max_cu, max_n_open, min_n_open,
-                                         sign * scale_factor, for_commutator, expand_hole, n_process)
-            temp_out += combine_terms(terms_local)
-        else:
-            commutator_recursive(chosen_terms + [unchosen_terms[0]], unchosen_terms[1:], sign, temp_out)
-            commutator_recursive([unchosen_terms[0]] + chosen_terms, unchosen_terms[1:], -sign, temp_out)
-
-    out = []
-    commutator_recursive(terms[:1], terms[1:], 1, out)
-
-    return combine_terms(out)
+# def nested_commutator_lct(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0,
+#                           for_commutator=True, expand_hole=True, n_process=1):
+#     """
+#     Compute the nested commutator of terms, i.e. [[...[[term_0, term_1], term_2], ...], term_k].
+#     :param terms: a list of terms
+#     :param max_cu: max level of cumulant
+#     :param max_n_open: max number of open indices for contractions of each single commutator
+#     :param min_n_open: min number of open indices for contractions of each single commutator
+#     :param scale_factor: a scaling factor for the results
+#     :param expand_hole: expand HoleDensity to Kronecker - Cumulant if True
+#     :param n_process: number of processes launched for tensor canonicalization
+#     :return: a list of contracted canonicalized Term objects
+#     """
+#     if len(terms) == 0:
+#         raise ValueError("size of terms cannot be zero.")
+#
+#     if len(terms) == 1:
+#         return terms
+#
+#     def commutator_recursive(chosen_terms, unchosen_terms, sign, temp_out):
+#         if len(unchosen_terms) == 0:
+#             terms_local = contract_terms(chosen_terms, max_cu, max_n_open, min_n_open,
+#                                          sign * scale_factor, for_commutator, expand_hole, n_process)
+#             temp_out += combine_terms(terms_local)
+#         else:
+#             commutator_recursive(chosen_terms + [unchosen_terms[0]], unchosen_terms[1:], sign, temp_out)
+#             commutator_recursive([unchosen_terms[0]] + chosen_terms, unchosen_terms[1:], -sign, temp_out)
+#
+#     out = []
+#     commutator_recursive(terms[:1], terms[1:], 1, out)
+#
+#     return combine_terms(out)
 
 
 def sympy_nested_commutator_recursive(level, A, B):

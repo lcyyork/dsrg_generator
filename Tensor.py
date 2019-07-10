@@ -113,6 +113,10 @@ class Tensor:
         return self._indices_pair
 
     @property
+    def indices(self):
+        return self.indices_pair.indices
+
+    @property
     def priority(self):
         return self._priority
 

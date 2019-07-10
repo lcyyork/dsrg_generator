@@ -161,3 +161,7 @@ class IndicesPair:
         upper_indices, upper_sign = self.upper_indices.canonicalize()
         lower_indices, lower_sign = self.lower_indices.canonicalize()
         return IndicesPair(upper_indices, lower_indices), upper_sign * lower_sign
+
+    def void_indices_pair(self):
+        """ Return an empty IndicesPair. """
+        return IndicesPair(self.type_of_indices([]), self.type_of_indices([]))

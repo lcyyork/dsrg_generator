@@ -185,3 +185,7 @@ class SecondQuantizedOperator:
         """
         indices_pair, sign = self.indices_pair.canonicalize()
         return SecondQuantizedOperator(indices_pair), sign
+
+    def void_sq_op(self):
+        """ Return an empty SecondQuantizedOperator. """
+        return SecondQuantizedOperator(self.indices_pair.void_indices_pair())

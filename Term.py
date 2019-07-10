@@ -173,6 +173,50 @@ class Term:
                 return False
         return True
 
+    def void_term(self):
+        """ Return an empty Term object. """
+        return Term([], self.sq_op.void_sq_op(), 0.0)
+
+    def is_void(self):
+        """ Return True if this Term is zero. """
+        return self.coeff == 0
+
+    def make_excitation(self, single_ref):
+        """
+        Make a Term to excitation operator if possible.
+        :param single_ref: use single-reference indices if True
+        :return: excitation operator if possible, otherwise an empty Term
+        """
+        if not self.is_excitation():
+            return self.void_term()
+
+        hole = 'c' if single_ref else 'h'
+        part = 'v' if single_ref else 'p'
+
+        replacement = {}
+        next_index_number = {i: 0 for i in self.next_index_number.keys()}
+        for i in self.sq_op.cre_ops:
+            overlap = space_relation[part] & space_relation[i.space]
+            if len(overlap) == 0:
+                return self.void_term()
+            s = part if overlap == space_relation[part] else overlap.pop()
+            replacement[i] = self._generate_next_index(s, next_index_number)
+        for i in self.sq_op.ann_ops:
+            overlap = space_relation[hole] & space_relation[i.space]
+            if len(overlap) == 0:
+                return self.void_term()
+            s = hole if overlap == space_relation[hole] else overlap.pop()
+            replacement[i] = self._generate_next_index(s, next_index_number)
+
+        for tensor in self.list_of_tensors:
+            for i in tensor.indices:
+                if i not in replacement:
+                    replacement[i] = self._generate_next_index(i.space, next_index_number)
+
+        sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
+
+        return Term(list_of_tensors, sq_op, self.coeff * sign, False)
+
     @staticmethod
     def format_coeff(value, form=None):
         fraction = Fraction(value).limit_denominator(1000000)
@@ -367,7 +411,7 @@ class Term:
         list_of_tensors = []
 
         # replacement = {i: i for i in self.indices_set}
-        replacement = dict()
+        replacement = {}
         next_active_a, next_active_b = self.next_index_number['a'], self.next_index_number['A']
 
         for tensor in self.list_of_tensors:
@@ -409,7 +453,7 @@ class Term:
         :return: a replacement map {index: downgraded index}
         """
         # replacement = {i: i for i in self.indices_set}
-        replacement = dict()
+        replacement = {}
         next_index = {**self.next_index_number}
 
         for i_tensor, tensor in enumerate(self.list_of_tensors):
@@ -597,7 +641,7 @@ class Term:
         Create a replacement map using minimal index labels to relabel the current term.
         :return: a replacement map {old index label: new index label}
         """
-        replacement = dict()
+        replacement = {}
         next_index_number = {i: 0 for i in self.next_index_number.keys()}
         n_indices = len(self.indices_set)
         for tensor in [self.sq_op] + self.list_of_tensors:
@@ -662,7 +706,7 @@ class Term:
         self.order_tensors(simplified=True)
 
         # create replacement map according to connections
-        replacement = dict()
+        replacement = {}
         next_index = {i: 0 for i in space_priority}
         n_non_cu = sum([not isinstance(i, Cumulant) for i in self.list_of_tensors])
 
@@ -692,9 +736,7 @@ class Term:
 
     def canonicalize_sympy(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
         """
-        Bring the current term to canonical form, which is defined by a sequence of ordering:
-        1. order tensor by connection to Hamiltonian
-        2. relabel indices
+        Bring the current term to canonical form using SymPy.
         :param simplify_core_cumulant: change a cumulant labeled by core indices to a Kronecker delta
         :param remove_active_amplitudes: remove terms when its contains all-active amplitudes
         :return: the "canonical" form of this term
@@ -727,7 +769,7 @@ class Term:
 
         # figure out permutation g and tensor bsgs
         g = []
-        reverse_indices_map = dict()
+        reverse_indices_map = {}
         for tensor in self.list_of_tensors:
             for index in tensor.lower_indices + tensor.upper_indices:
                 i = minimal_indices_map[index]
@@ -772,6 +814,7 @@ class Term:
         self._list_of_tensors = list_of_tensors
         self._coeff *= sign
         self._sq_op = sq_op
+        self._indices_set = set(minimal_indices_map.values())
         return self
 
     def generate_spin_cases_naive(self):

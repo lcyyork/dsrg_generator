@@ -1,4 +1,8 @@
-from Indices import Indices, IndicesSpinOrbital
+from sympy.combinatorics.tensor_can import get_symmetric_group_sgs, bsgs_direct_product, get_minimal_bsgs
+from sympy.combinatorics import Permutation
+from sympy.combinatorics.perm_groups import PermutationGroup
+
+from Indices import Indices, IndicesSpinOrbital, IndicesAntisymmetric
 
 
 def make_indices_pair(upper_indices, lower_indices, indices_type=""):
@@ -165,3 +169,38 @@ class IndicesPair:
     def void_indices_pair(self):
         """ Return an empty IndicesPair. """
         return IndicesPair(self.type_of_indices([]), self.type_of_indices([]))
+
+    def base_strong_generating_set(self, hermitian):
+        """
+        Return minimal base and strong generating set of this IndicesPair.
+        :param hermitian: upper and lower indices can be swapped if True
+        :return: a tuple of (base, strong generating set)
+        """
+        if not isinstance(self.type_of_indices, IndicesAntisymmetric):
+            raise NotImplementedError("Base and strong generating set are not implemented for spin-adapted indices.")
+
+        if not hermitian:
+            u_base, u_gens = get_symmetric_group_sgs(self.n_upper, 1)
+            l_base, l_gens = get_symmetric_group_sgs(self.n_lower, 1)
+            return bsgs_direct_product(u_base, u_gens, l_base, l_gens)
+
+        if self.n_upper != self.n_lower:
+            raise ValueError(f"{self} cannot be Hermitian.")
+
+        upper = list(range(self.n_upper))
+        lower = list(range(self.n_upper, self.size))
+        sign = [self.size, self.size + 1]
+
+        perms = [Permutation(i, j)(sign[0], sign[1]) for i, j in zip(upper[:-1], upper[1:])]
+        perms += [Permutation(i, j)(sign[0], sign[1]) for i, j in zip(lower[:-1], lower[1:])]
+
+        size = self.size + 2
+        p = list(range(size))
+        for i, j in zip(upper, lower):
+            p[i] = j
+            p[j] = i
+        perms.append(Permutation(p))
+
+        asymmetric = PermutationGroup(*perms)
+        asymmetric.schreier_sims()
+        return get_minimal_bsgs(asymmetric.base, asymmetric.strong_gens)

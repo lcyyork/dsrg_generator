@@ -189,3 +189,7 @@ class SecondQuantizedOperator:
     def void_sq_op(self):
         """ Return an empty SecondQuantizedOperator. """
         return SecondQuantizedOperator(self.indices_pair.void_indices_pair())
+
+    def base_strong_generating_set(self):
+        """ Return the base and strong generating set for Term canonicalization. """
+        return self.indices_pair.base_strong_generating_set(False)

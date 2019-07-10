@@ -258,6 +258,10 @@ class Tensor:
         for indices_pair in self.indices_pair.generate_spin_cases(particle_conserving):
             yield self.__class__(indices_pair, self.name, self.priority)
 
+    def base_strong_generating_set(self):
+        """ Return base and strong generating set for Term canonicalization. """
+        return self.indices_pair.base_strong_generating_set(True)
+
 
 @Tensor.register_subclass('cumulant')
 class Cumulant(Tensor):

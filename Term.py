@@ -12,7 +12,7 @@ from mo_space import space_priority, space_relation, space_priority_so, space_re
 from Index import Index
 from Indices import Indices, IndicesSpinOrbital, IndicesAntisymmetric
 from IndicesPair import IndicesPair
-from Tensor import Tensor, Cumulant, Hamiltonian, ClusterAmplitude, Kronecker, HoleDensity, tensor_bsgs
+from Tensor import Tensor, Cumulant, Hamiltonian, ClusterAmplitude, Kronecker, HoleDensity
 from SQOperator import SecondQuantizedOperator, make_sqop
 from SpaceCounter import SpaceCounter
 
@@ -803,70 +803,6 @@ class Term:
 
         return Term(list_of_tensors, sq_op, sign * self.coeff, False)
 
-        # sq_op = self._replace_sqop_indices(self.sq_op, minimal_indices_map)
-        # sq_op, sign = sq_op.canonicalize()
-        #
-        # ordered_indices = {v: k for k, v in enumerate(sq_op.cre_ops + sq_op.ann_ops)}
-        #
-        # # figure out dummies
-        # dummies_indices = [i for i in sorted(minimal_indices_map.values())
-        #                    if (i not in sq_op.cre_ops) and (i not in sq_op.ann_ops)]
-        # dummies_map = {i.space: [] for i in dummies_indices}
-        # for i, v in enumerate(dummies_indices):
-        #     dummies_map[v.space] += [2 * i + sq_op.n_ops, 2 * i + 1 + sq_op.n_ops]
-        #     ordered_indices[v] = 2 * i + sq_op.n_ops
-        # dummies = [dummies_map[k] for k in sorted(dummies_map.keys(), key=lambda i: mo_space.index(i))]
-        #
-        # # figure out permutation g and tensor bsgs
-        # g = []
-        # reverse_indices_map = {}
-        # for tensor in self.list_of_tensors:
-        #     for index in tensor.lower_indices + tensor.upper_indices:
-        #         i = minimal_indices_map[index]
-        #         g.append(ordered_indices[i])
-        #         reverse_indices_map[ordered_indices[i]] = i
-        #         ordered_indices[i] += 1
-        #
-        # consider_sign = isinstance(self.list_of_tensors[0].upper_indices, IndicesAntisymmetric)
-        # if consider_sign:
-        #     n_labels = len(g)
-        #     g += [n_labels, n_labels + 1]
-        #
-        # # figure out equivalent tensors and bsgs
-        # bsgs_list = []
-        # tensor_counts = [len(list(group)) for k, group in groupby(self.list_of_tensors,
-        #                                                           key=lambda x: (x.name, x.n_body))]
-        # shift = 0
-        # for count in tensor_counts:
-        #     base, gens = tensor_bsgs(self.list_of_tensors[shift])
-        #     bsgs_list.append((base, gens, count, 0))
-        #     shift += count
-        #
-        # # canonicalize indices
-        # gc = canonicalize(Permutation(g), dummies, [0] * len(dummies), *bsgs_list)
-        #
-        # # put canonicalized indices into replacement map
-        # shift = 0
-        # list_of_tensors = []
-        # for tensor in self.list_of_tensors:
-        #     lower_indices = tensor.type_of_indices([reverse_indices_map[gc[i + shift]] for i in range(tensor.n_lower)])
-        #     shift += tensor.n_lower
-        #     upper_indices = tensor.type_of_indices([reverse_indices_map[gc[i + shift]] for i in range(tensor.n_upper)])
-        #     shift += tensor.n_upper
-        #
-        #     indices_pair = IndicesPair(upper_indices, lower_indices)
-        #     list_of_tensors.append(tensor.__class__(indices_pair, tensor.name, tensor.priority))
-        #
-        # if consider_sign:
-        #     if g[-1] != gc[-1]:
-        #         sign *= -1
-        #
-        # self._list_of_tensors = list_of_tensors
-        # self._coeff *= sign
-        # self._sq_op = sq_op
-        # self._indices_set = set(minimal_indices_map.values())
-        # return self
-
     def generate_spin_cases_naive(self):
         """
         Generate a list of spin-integrated Term objects.
@@ -882,7 +818,7 @@ class Term:
             try:
                 sq_op = pairs[0]
                 list_of_tensors = list(pairs[1:])
-                terms.append(Term(list_of_tensors, sq_op, self.coeff, need_to_sort=False).canonicalize())
+                terms.append(Term(list_of_tensors, sq_op, self.coeff, need_to_sort=False).canonicalize_sympy())
             except ValueError:
                 pass
 

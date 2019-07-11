@@ -52,8 +52,26 @@ class SecondQuantizedOperator:
         return self.indices_pair.n_lower
 
     @property
+    def n_upper(self):
+        return self.indices_pair.n_upper
+
+    @property
+    def n_lower(self):
+        return self.indices_pair.n_lower
+
+    @property
     def n_ops(self):
         return self.n_cre + self.n_ann
+
+    @property
+    def n_body(self):
+        if self.n_lower != self.n_upper:
+            raise ValueError(f"Invalid quest because n_lower ({self.n_lower}) != n_upper ({self.n_upper}).")
+        return self.n_lower
+
+    @property
+    def size(self):
+        return self.indices_pair.size
 
     @property
     def indices(self):

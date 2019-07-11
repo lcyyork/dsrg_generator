@@ -176,7 +176,7 @@ class IndicesPair:
         :param hermitian: upper and lower indices can be swapped if True
         :return: a tuple of (base, strong generating set)
         """
-        if not isinstance(self.type_of_indices, IndicesAntisymmetric):
+        if not isinstance(self.upper_indices, IndicesAntisymmetric):
             raise NotImplementedError("Base and strong generating set are not implemented for spin-adapted indices.")
 
         if not hermitian:

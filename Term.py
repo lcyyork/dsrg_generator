@@ -1,7 +1,7 @@
 from copy import deepcopy
 from collections import defaultdict
 from fractions import Fraction
-from itertools import product, groupby
+from itertools import product, groupby, accumulate
 from math import factorial
 from sympy.combinatorics.tensor_can import get_symmetric_group_sgs, canonicalize
 from sympy.combinatorics.tensor_can import bsgs_direct_product, riemann_bsgs
@@ -746,76 +746,126 @@ class Term:
         if self.coeff == 0:
             return self
 
-        # use sympy to canonicalize tensor indices
-        for tensor in self.list_of_tensors:
-            if tensor.n_body > 3:
-                raise ValueError("Canonicalization using SymPy only supports 1-, 2-, and 3-body operators now.")
-
+        # use SymPy to canonicalize tensor indices
+        # both tensors and sq-operator are considered contracted (dummies)
         minimal_indices_map = self._minimal_indices()
 
-        sq_op = self._replace_sqop_indices(self.sq_op, minimal_indices_map)
-        sq_op, sign = sq_op.canonicalize()
+        dummy_indices = sorted(minimal_indices_map.values())
+        dummy_group = [list(values) for k, values in groupby(dummy_indices, key=lambda x: x.space)]
+        dummy_count = [0] + list(accumulate(map(len, dummy_group)))
+        dummies = [range(2 * i, 2 * j) for i, j in zip(dummy_count[:-1], dummy_count[1:])]
 
-        ordered_indices = {v: k for k, v in enumerate(sq_op.cre_ops + sq_op.ann_ops)}
-
-        # figure out dummies
-        dummies_indices = [i for i in sorted(minimal_indices_map.values())
-                           if (i not in sq_op.cre_ops) and (i not in sq_op.ann_ops)]
-        dummies_map = {i.space: [] for i in dummies_indices}
-        for i, v in enumerate(dummies_indices):
-            dummies_map[v.space] += [2 * i + sq_op.n_ops, 2 * i + 1 + sq_op.n_ops]
-            ordered_indices[v] = 2 * i + sq_op.n_ops
-        dummies = [dummies_map[k] for k in sorted(dummies_map.keys(), key=lambda i: mo_space.index(i))]
-
-        # figure out permutation g and tensor bsgs
+        # figure out permutation g, note we put sq_op as the first "tensor"
+        indices_tracker = {v: 2 * i for i, v in enumerate(dummy_indices)}
         g = []
-        reverse_indices_map = {}
-        for tensor in self.list_of_tensors:
+        for tensor in [self.sq_op] + self.list_of_tensors:
             for index in tensor.lower_indices + tensor.upper_indices:
-                i = minimal_indices_map[index]
-                g.append(ordered_indices[i])
-                reverse_indices_map[ordered_indices[i]] = i
-                ordered_indices[i] += 1
+                minimal_index = minimal_indices_map[index]
+                g.append(indices_tracker[minimal_index])
+                indices_tracker[minimal_index] += 1
 
         consider_sign = isinstance(self.list_of_tensors[0].upper_indices, IndicesAntisymmetric)
         if consider_sign:
-            n_labels = len(g)
-            g += [n_labels, n_labels + 1]
+            g += [len(g), len(g) + 1]
 
-        # figure out equivalent tensors and bsgs
-        bsgs_list = []
-        tensor_counts = [len(list(group)) for k, group in groupby(self.list_of_tensors,
-                                                                  key=lambda x: (x.name, x.n_body))]
+        # figure out equivalent tensors and tensor/sq_op base and strong generating set
+        bsgs_list = [self.sq_op.base_strong_generating_set() + (1, 0)]
+        tensor_count = [sum(1 for i in group) for k, group in groupby(self.list_of_tensors,
+                                                                      key=lambda x: (x.name, x.n_body))]
         shift = 0
-        for count in tensor_counts:
-            base, gens = tensor_bsgs(self.list_of_tensors[shift])
+        for count in tensor_count:
+            base, gens = self.list_of_tensors[shift].base_strong_generating_set()
             bsgs_list.append((base, gens, count, 0))
             shift += count
 
         # canonicalize indices
         gc = canonicalize(Permutation(g), dummies, [0] * len(dummies), *bsgs_list)
 
-        # put canonicalized indices into replacement map
-        shift = 0
+        # translate gc to Tensor and SecondQuantizedOperator
+        ann_ops = self.sq_op.type_of_indices([dummy_indices[i // 2] for i in gc[:self.sq_op.n_ann]])
+        cre_ops = self.sq_op.type_of_indices([dummy_indices[i // 2] for i in gc[self.sq_op.n_ann:self.sq_op.size]])
+        sq_op = SecondQuantizedOperator(IndicesPair(cre_ops, ann_ops))
+
+        shift = self.sq_op.size
         list_of_tensors = []
         for tensor in self.list_of_tensors:
-            lower_indices = tensor.type_of_indices([reverse_indices_map[gc[i + shift]] for i in range(tensor.n_lower)])
+            lower_indices = tensor.type_of_indices([dummy_indices[gc[i + shift] // 2] for i in range(tensor.n_lower)])
             shift += tensor.n_lower
-            upper_indices = tensor.type_of_indices([reverse_indices_map[gc[i + shift]] for i in range(tensor.n_upper)])
+            upper_indices = tensor.type_of_indices([dummy_indices[gc[i + shift] // 2] for i in range(tensor.n_upper)])
             shift += tensor.n_upper
 
             indices_pair = IndicesPair(upper_indices, lower_indices)
             list_of_tensors.append(tensor.__class__(indices_pair, tensor.name, tensor.priority))
 
-        if consider_sign:
-            if g[-1] != gc[-1]:
-                sign *= -1
+        sign = 1
+        if consider_sign and g[-1] != gc[-1]:
+            sign = -1
 
-        self._list_of_tensors = list_of_tensors
-        self._coeff *= sign
-        self._sq_op = sq_op
-        self._indices_set = set(minimal_indices_map.values())
-        return self
+        return Term(list_of_tensors, sq_op, sign * self.coeff, False)
+
+        # sq_op = self._replace_sqop_indices(self.sq_op, minimal_indices_map)
+        # sq_op, sign = sq_op.canonicalize()
+        #
+        # ordered_indices = {v: k for k, v in enumerate(sq_op.cre_ops + sq_op.ann_ops)}
+        #
+        # # figure out dummies
+        # dummies_indices = [i for i in sorted(minimal_indices_map.values())
+        #                    if (i not in sq_op.cre_ops) and (i not in sq_op.ann_ops)]
+        # dummies_map = {i.space: [] for i in dummies_indices}
+        # for i, v in enumerate(dummies_indices):
+        #     dummies_map[v.space] += [2 * i + sq_op.n_ops, 2 * i + 1 + sq_op.n_ops]
+        #     ordered_indices[v] = 2 * i + sq_op.n_ops
+        # dummies = [dummies_map[k] for k in sorted(dummies_map.keys(), key=lambda i: mo_space.index(i))]
+        #
+        # # figure out permutation g and tensor bsgs
+        # g = []
+        # reverse_indices_map = {}
+        # for tensor in self.list_of_tensors:
+        #     for index in tensor.lower_indices + tensor.upper_indices:
+        #         i = minimal_indices_map[index]
+        #         g.append(ordered_indices[i])
+        #         reverse_indices_map[ordered_indices[i]] = i
+        #         ordered_indices[i] += 1
+        #
+        # consider_sign = isinstance(self.list_of_tensors[0].upper_indices, IndicesAntisymmetric)
+        # if consider_sign:
+        #     n_labels = len(g)
+        #     g += [n_labels, n_labels + 1]
+        #
+        # # figure out equivalent tensors and bsgs
+        # bsgs_list = []
+        # tensor_counts = [len(list(group)) for k, group in groupby(self.list_of_tensors,
+        #                                                           key=lambda x: (x.name, x.n_body))]
+        # shift = 0
+        # for count in tensor_counts:
+        #     base, gens = tensor_bsgs(self.list_of_tensors[shift])
+        #     bsgs_list.append((base, gens, count, 0))
+        #     shift += count
+        #
+        # # canonicalize indices
+        # gc = canonicalize(Permutation(g), dummies, [0] * len(dummies), *bsgs_list)
+        #
+        # # put canonicalized indices into replacement map
+        # shift = 0
+        # list_of_tensors = []
+        # for tensor in self.list_of_tensors:
+        #     lower_indices = tensor.type_of_indices([reverse_indices_map[gc[i + shift]] for i in range(tensor.n_lower)])
+        #     shift += tensor.n_lower
+        #     upper_indices = tensor.type_of_indices([reverse_indices_map[gc[i + shift]] for i in range(tensor.n_upper)])
+        #     shift += tensor.n_upper
+        #
+        #     indices_pair = IndicesPair(upper_indices, lower_indices)
+        #     list_of_tensors.append(tensor.__class__(indices_pair, tensor.name, tensor.priority))
+        #
+        # if consider_sign:
+        #     if g[-1] != gc[-1]:
+        #         sign *= -1
+        #
+        # self._list_of_tensors = list_of_tensors
+        # self._coeff *= sign
+        # self._sq_op = sq_op
+        # self._indices_set = set(minimal_indices_map.values())
+        # return self
 
     def generate_spin_cases_naive(self):
         """

@@ -1,3 +1,4 @@
+from collections import Counter
 from IndicesPair import IndicesPair, make_indices_pair
 
 
@@ -210,4 +211,8 @@ class SecondQuantizedOperator:
 
     def base_strong_generating_set(self):
         """ Return the base and strong generating set for Term canonicalization. """
+        if self.n_ops == 0:
+            raise ValueError("Cannot perform BSGS on zero-body operator.")
+        # if Counter([i.space for i in self.cre_ops]) == Counter([i.space for i in self.ann_ops]):
+        #     return self.indices_pair.base_strong_generating_set(True)
         return self.indices_pair.base_strong_generating_set(False)

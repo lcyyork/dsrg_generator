@@ -215,7 +215,41 @@ class Term:
 
         sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
 
-        return Term(list_of_tensors, sq_op, self.coeff * sign, False)
+        return Term(list_of_tensors, sq_op, self.coeff * sign, False).canonicalize_sympy()
+
+    def make_one_body_diagonal(self, single_ref):
+        """
+        Make a one-body Term to a diagonal operator.
+        :param single_ref: use single-reference indices if True
+        :return: yield diagonal one-body terms
+        """
+        if not self.sq_op.n_body == 1:
+            raise ValueError(f"{self} is not an one-body operator.")
+
+        cre_index = self.sq_op.cre_ops.indices[0]
+        ann_index = self.sq_op.ann_ops.indices[0]
+        overlap = space_relation[cre_index.space] & space_relation[ann_index.space]
+
+        if single_ref:
+            if 'a' in overlap:
+                overlap.remove('a')
+            if 'A' in overlap:
+                overlap.remove('A')
+
+        for s in overlap:
+            replacement = {}
+            next_index_number = {i: 0 for i in self.next_index_number.keys()}
+            replacement[ann_index] = self._generate_next_index(s, next_index_number)
+            replacement[cre_index] = self._generate_next_index(s, next_index_number)
+
+            for tensor in self.list_of_tensors:
+                for i in tensor.indices:
+                    if i not in replacement:
+                        replacement[i] = self._generate_next_index(i.space, next_index_number)
+
+            sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
+
+            yield Term(list_of_tensors, sq_op, self.coeff * sign, False).canonicalize_sympy()
 
     @staticmethod
     def format_coeff(value, form=None):
@@ -769,7 +803,7 @@ class Term:
             g += [len(g), len(g) + 1]
 
         # figure out equivalent tensors and tensor/sq_op base and strong generating set
-        bsgs_list = [self.sq_op.base_strong_generating_set() + (1, 0)]
+        bsgs_list = [] if self.sq_op.n_ops == 0 else [self.sq_op.base_strong_generating_set() + (1, 0)]
         tensor_count = [sum(1 for i in group) for k, group in groupby(self.list_of_tensors,
                                                                       key=lambda x: (x.name, x.n_body))]
         shift = 0

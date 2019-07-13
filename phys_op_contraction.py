@@ -116,19 +116,21 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
         count = 0
         out = []
         contractions = []
+        batch_size = 10000 * max(1, n_process // 2)
 
         for batch in compute_operator_contractions(sq_ops_to_be_contracted, max_cu, max_n_open, min_n_open,
                                                    for_commutator, expand_hole, n_process=1):
             count += len(batch)
             contractions += batch
 
-            if count < 10000:
+            if count < batch_size:
                 continue
 
             out += canonicalize_contractions_batch(n_process, contractions, tensors, coeff)
             contractions = []
             count = 0
 
+        n_process = max(1, len(contractions) // (batch_size // n_process))
         out += canonicalize_contractions_batch(n_process, contractions, tensors, coeff, False)
 
         return combine_terms(out)

@@ -213,6 +213,4 @@ class SecondQuantizedOperator:
         """ Return the base and strong generating set for Term canonicalization. """
         if self.n_ops == 0:
             raise ValueError("Cannot perform BSGS on zero-body operator.")
-        # if Counter([i.space for i in self.cre_ops]) == Counter([i.space for i in self.ann_ops]):
-        #     return self.indices_pair.base_strong_generating_set(True)
         return self.indices_pair.base_strong_generating_set(False)

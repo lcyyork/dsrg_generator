@@ -282,6 +282,14 @@ class Term:
 
             yield Term(list_of_tensors, sq_op, self.coeff * sign, False).canonicalize_sympy()
 
+    def expand_composite_indices(self, single_ref):
+        """
+        Expand composite indices in the SecondQuantizedOperator of this term.
+        :param single_ref: ignore active indices
+        :return: yield expanded terms
+        """
+        return self.make_ddca(self.sq_op.n_ops, self.sq_op.n_ops, single_ref)
+
     @staticmethod
     def format_coeff(value, form=None):
         fraction = Fraction(value).limit_denominator(1000000)

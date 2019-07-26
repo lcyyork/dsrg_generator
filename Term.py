@@ -77,6 +77,12 @@ class Term:
             next_index_number[i.space] = max(next_index_number[i.space], i.number + 1)
         self._next_index_number = next_index_number
 
+    @classmethod
+    def from_term(cls, term, flip_sign=False):
+        """ Copy from a term. """
+        sign = -1 if flip_sign else 1
+        return cls(term.list_of_tensors, term.sq_op, sign * term.coeff)
+
     @property
     def coeff(self):
         return self._coeff
@@ -401,7 +407,7 @@ class Term:
         if not sq_op.exist_permute_format(p_cre, p_ann):
             lhs = f"{real_name}{sq_op.ambit(cre_first=False)}"
             rhs = f"{coeff_str} * {tensors_str}"
-            return lhs + " += " + rhs + ";\n"
+            return lhs + " += " + rhs + ";"
         else:
             if not any([ignore_permutations, init_temp, declared_temp]):
                 return f'{real_name}{sq_op.ambit(cre_first=False)} += {coeff_str} * {tensors_str};\n'
@@ -415,7 +421,7 @@ class Term:
             t_name = 'temp' if declared_temp else real_name
 
             if ignore_permutations:
-                return out + f'{t_name}{sq_op.ambit(cre_first=False)} += {coeff_str} * {tensors_str};\n'
+                return out + f'{t_name}{sq_op.ambit(cre_first=False)} += {coeff_str} * {tensors_str};'
             else:
                 if declared_temp:
                     temp_indices = f'{sq_op.ambit(cre_first=False)}'
@@ -424,7 +430,7 @@ class Term:
                         out += f"{real_name}{lhs_indices} {'+' if sign == 1 else '-'}= temp{temp_indices};\n"
                 else:
                     for sign, lhs_indices in sq_op.ambit_permute_format(p_cre, p_ann, cre_first=False):
-                        out += f"{real_name}{lhs_indices} {'+' if sign == 1 else '-'}= {coeff_str} * {tensors_str};\n"
+                        out += f"{real_name}{lhs_indices} {'+' if sign == 1 else '-'}= {coeff_str} * {tensors_str};"
 
             return out
 
@@ -874,7 +880,7 @@ class Term:
         if consider_sign and g[-1] != gc[-1]:
             sign = -1
 
-        return Term(list_of_tensors, sq_op, sign * self.coeff, False)
+        return Term(list_of_tensors, sq_op, sign * self.coeff)
 
     def generate_spin_cases_naive(self):
         """

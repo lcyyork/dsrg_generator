@@ -447,6 +447,8 @@ def print_terms_ambit(input_terms):
         i_last = len(terms) - 1
         for i, term in enumerate(terms):
             print(term.ambit(ignore_permutations=(i != i_last), init_temp=(i == 0), declared_temp=True))
+        if k[1] == '':
+            print()
 
 
 def print_terms_ambit_symmetric(input_terms):
@@ -469,6 +471,8 @@ def print_terms_ambit_symmetric(input_terms):
             term.coeff *= scale
             print(term.ambit(ignore_permutations=(i != i_last), init_temp=(i == 0), declared_temp=True))
             term.coeff /= scale
+        if perm == '':
+            print()
 
 
 def save_terms_ambit(input_terms, full_path, func_name):
@@ -520,6 +524,8 @@ def save_terms_ambit(input_terms, full_path, func_name):
                 term.coeff *= scale
                 w.write(f'    {term.ambit(ignore_permutations=(i != i_last), init_temp=(i == 0), declared_temp=True)}\n')
                 term.coeff /= scale
+            if perm == '':
+                w.write('\n')
 
         w.write(suffix)
 

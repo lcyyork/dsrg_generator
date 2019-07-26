@@ -1,4 +1,4 @@
-from mo_space import space_priority
+from src.mo_space import space_priority
 
 
 class Index:

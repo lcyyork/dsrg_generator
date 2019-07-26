@@ -1,5 +1,5 @@
 import pytest
-from Index import Index
+from src.Index import Index
 
 
 def test_index_init():

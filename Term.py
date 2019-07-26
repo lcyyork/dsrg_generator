@@ -388,7 +388,7 @@ class Term:
         :param name: output tensor name
         :param ignore_permutations: ignore permutations printing
         :param init_temp: initialize a temp tensor
-        :param declared_temp: declare a temp tensor
+        :param declared_temp: declared a temp tensor previously
         :return: ambit form (string) of the Term
         """
         if not isinstance(name, str):

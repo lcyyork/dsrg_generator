@@ -12,11 +12,11 @@ from sympy.core.add import Add
 from sympy.core.mul import Mul
 
 from integer_partition import integer_partition
-from mo_space import space_relation
+from mo_space import space_relation, space_priority
 from Indices import Indices
 from IndicesPair import make_indices_pair
 from SQOperator import make_sqop, SecondQuantizedOperator
-from Tensor import make_tensor_preset, ClusterAmplitude
+from Tensor import make_tensor_preset, ClusterAmplitude, Hamiltonian, Cumulant
 from Term import Term
 from sqop_contraction import compute_operator_contractions
 # from sqop_contraction import generate_operator_contractions, generate_operator_contractions_new
@@ -473,6 +473,58 @@ def print_terms_ambit_symmetric(input_terms):
             term.coeff /= scale
         if perm == '':
             print()
+
+
+def print_terms_ambit_functions(input_terms):
+    block_repr = sort_contraction_results(input_terms)
+    out_terms = {k[0]: {k[1]: []} for k in block_repr.keys()}
+    for k, terms in block_repr.items():
+        out_terms[k[0]][k[1]] = terms
+
+    for block in out_terms.keys():
+        for perm, terms in out_terms[block].items():
+            i_last = len(terms) - 1
+            for i, term in enumerate(terms):
+                print(term.ambit(ignore_permutations=(i != i_last), init_temp=(i == 0), declared_temp=True))
+            if perm == '':
+                print()
+
+    # # figure out levels of Hamiltonian, ClusterAmplitudes, and Cumulants for each block
+    # tensor_levels = {}
+    # total_levels = [set(), set(), set()]
+    # for block in out_terms.keys():
+    #     H_levels, T_levels = set(), set()
+    #     for perm, terms in out_terms[block].items():
+    #         for term in terms:
+    #             for tensor in term.list_of_tensors:
+    #                 n_body = tensor.n_body
+    #                 if isinstance(tensor, Hamiltonian):
+    #                     H_levels.add(n_body)
+    #                 elif isinstance(tensor, ClusterAmplitude):
+    #                     T_levels.add(n_body)
+    #                 else:
+    #                     continue
+    #     tensor_levels[block] = [H_levels, T_levels]
+    #     total_levels[0].union(H_levels)
+    #     total_levels[1].union(T_levels)
+    #     total_levels[2].add(len(block) // 2)
+    #
+    # title_H = ",".join([f"BlockedTensor& H{i}" for i in sorted(total_levels[0])])
+    # title_T = ",".join([f"BlockedTensor& T{i}" for i in sorted(total_levels[1])])
+    # C0 = 0 in total_levels[2]
+    # Cn = [f"C{i}" for i in sorted(total_levels[2]) if i != 0]
+    # title_C = "" if not C0 else "double& C0, "
+    # title_C += ",".join([f"BlockedTensor& {i}" for i in Cn])
+    # resetC = "" if not C0 else "C0 = 0.0;\n"
+    # resetC += "\n".join([f"{i}.zero();" for i Cn])
+    # prefix = f"""void {class_name}::{func_name}(double factor, {title_H}, {title_T}, {title_C}) {{
+    # {resetC}
+    # BlockedTensor temp;""" + "\n" * 2
+    #
+    # scaleC = "" if not C0 else "C0 *= factor;\n"
+    # scaleC += "\n".join([f"{i}.scale(factor);" for i in Cn])
+    # addC = "" if not C0 else "C0 *= 2.0;\n"
+    # addC +=
 
 
 def save_terms_ambit(input_terms, full_path, func_name):

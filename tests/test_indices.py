@@ -95,7 +95,7 @@ def test_indices_so_init():
 
 
 def test_indices_so_canonical():
-    a = Indices.make_indices("p0, p1, a0, h0, g4, g1, c1, v2", 'spin-orbital')
+    a = Indices.make_indices("p0, p1, a0, h0, g4, g1, c1, v2", 'so')
     c, sign = a.canonicalize()
     assert sign == -1
     assert c == IndicesSpinOrbital("g1, g4, p0, p1, h0, v2, c1, a0")

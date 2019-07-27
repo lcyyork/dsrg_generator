@@ -54,6 +54,10 @@ def merge_and_count_split_inversion(left, right):
 class Indices:
     # available keys: antisymmetric, spin-orbital, spin-integrated, spin-adapted
     subclasses = dict()
+    subclasses_alias = {'antisymmetric': 'antisymmetric', 'asymm': 'antisymmetric',
+                        'spin-orbital': 'spin-orbital', 'so': 'spin-orbital',
+                        'spin-integrated': 'spin-integrated', 'si': 'spin-integrated',
+                        'spin-adapted': 'spin-adapted', 'sa': 'spin-adapted'}
 
     @classmethod
     def register_subclass(cls, indices_type):
@@ -64,9 +68,10 @@ class Indices:
 
     @classmethod
     def make_indices(cls, params, indices_type):
-        if indices_type not in cls.subclasses:
-            raise KeyError(f"Invalid indices type '{indices_type}'. Available: {', '.join(Indices.subclasses.keys())}.")
-        return cls.subclasses[indices_type](params)
+        if indices_type not in cls.subclasses_alias:
+            raise KeyError(f"Invalid indices type '{indices_type}'. "
+                           f"Available: {', '.join(Indices.subclasses_alias.keys())}.")
+        return cls.subclasses[cls.subclasses_alias[indices_type]](params)
 
     def __init__(self, list_of_indices):
         """

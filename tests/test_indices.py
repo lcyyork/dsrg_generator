@@ -1,11 +1,11 @@
 import pytest
-from Index import Index
-from Indices import Indices, IndicesSpinOrbital, IndicesSpinIntegrated
+from src.Index import Index
+from src.Indices import Indices, IndicesSpinOrbital, IndicesSpinIntegrated
 
 
 def test_indices_init():
     with pytest.raises(ValueError):
-        Indices("a0 c1,P2,V8")
+        Indices("a0 c1, P2, V8")
     with pytest.raises(ValueError):
         Indices(["a0"] * 3)
     a = Indices("a0, P2")
@@ -74,12 +74,19 @@ def test_indices_perm():
     assert a.is_permutation(Indices("g2, p1, p0, A4"))
 
 
-def test_indices_count_space():
-    assert Indices("p0, P1, a2, h0, g4, G1, C1, v2").count_index_space(['p', 'v', 'P', 'V']) == 3
+def test_any_overlap():
+    a = Indices("p0, p1, g2, A4")
+    b = Indices("p3, p1, c2, a4")
+    assert a.any_overlap(b)
+    b = Indices("p3, h1, c2, a4")
+    assert not a.any_overlap(b)
 
 
-def test_indices_remove():
-    assert Indices("p0, P1, a2, h0, g4, G1, C1, v2").remove(2) == Indices("p0, P1, h0, g4, G1, C1, v2")
+def test_clone():
+    a = Indices("p0, c1, g2, A4")
+    b = a.clone()
+    assert a == b
+    assert a is not b
 
 
 def test_indices_so_init():
@@ -98,12 +105,14 @@ def test_indices_so_canonical():
 
 def test_indices_so_ambit_perm():
     a = IndicesSpinOrbital(["p0", "p1", "v2", "a3"])
-    for sign, indices_str in a.ambit_permute_format():
+    part = [[Index("p0"), Index("p1")], [Index("v2")], [Index("a3")]]
+    for sign, indices_str in a.ambit_permute_format(part):
         assert sign == (-1) ** a.count_permutations(Indices(indices_str))
 
 
 def test_indices_so_latex_perm():
-    n_perm, perm = IndicesSpinOrbital("p0, p1, g2, a4").latex_permute_format()
+    part = [[Index("g2")], [Index("p0"), Index("p1")], [Index("a4")]]
+    n_perm, perm = IndicesSpinOrbital("p0, p1, g2, a4").latex_permute_format(part)
     assert n_perm == 12
     assert perm == "{\\cal P}(g_{2} / p_{0} p_{1} / a_{4})"
 
@@ -143,6 +152,7 @@ def test_indices_si_canonical():
 
 def test_indices_si_ambit_perm():
     a = IndicesSpinIntegrated(["P0", "P1", "V2", "A3"])
+    part = [["V2"], ["P0", "P1"], ["A3"]]
     ref = {"P0,P1,V2,A3",
            "P0,P1,A3,V2",
            "P0,A3,P1,V2",
@@ -155,21 +165,21 @@ def test_indices_si_ambit_perm():
            "A3,P0,V2,P1",
            "A3,V2,P0,P1",
            "V2,A3,P0,P1"}
-    for sign, indices_str in a.ambit_permute_format():
+    for sign, indices_str in a.ambit_permute_format(part):
         assert sign == (-1) ** a.count_permutations(Indices(indices_str))
         assert indices_str in ref
         ref.remove(indices_str)
     assert len(ref) == 0
 
     a = IndicesSpinIntegrated(["P0", "P1", "c2", "A3"])
-    for sign, indices_str in a.ambit_permute_format():
+    for sign, indices_str in a.ambit_permute_format(part):
         assert sign == 1
         assert indices_str == ",".join(map(str, a.indices))
 
 
 def test_indices_si_spin_pure():
-    assert IndicesSpinIntegrated(["P0", "P1", "V2", "A3"]).is_spin_pure()
-    assert not IndicesSpinIntegrated(["P0", "a1", "a2", "g3"]).is_spin_pure()
+    assert IndicesSpinIntegrated(["P0", "P1", "V2", "A3"]).spin_pure
+    assert not IndicesSpinIntegrated(["P0", "a1", "a2", "g3"]).spin_pure
 
 
 def test_indices_si_alpha_beta():
@@ -179,10 +189,15 @@ def test_indices_si_alpha_beta():
     assert a.n_beta() == 3 and a.n_alpha() == 2
 
 
-def test_indices_si_exist_permute_format():
-    a = IndicesSpinIntegrated(["P0", "P1", "V2", "A3"])
-    assert a.exist_permute_format()
+def test_indices_si_latex_permute_format():
+    a = IndicesSpinIntegrated(["P0", "P1", "P2", "A3"])
+    part = [["P2"], ["P0", "P1"], ["A3"]]
+    with pytest.raises(AttributeError):
+        a.latex_permute_format(part)
+
+    part = [[Index("P2")], [Index("P0"), Index("P1")], [Index("A3")]]
+    n_perm, perm_str = a.latex_permute_format(part)
+    assert (n_perm, perm_str) == (12, '{\\cal P}(P_{2} / P_{0} P_{1} / A_{3})')
+
     a = IndicesSpinIntegrated(["p0", "P1", "V2", "A3"])
-    assert not a.exist_permute_format()
-    a = IndicesSpinIntegrated(["p0", "p1", "p2"])
-    assert not a.exist_permute_format()
+    assert a.latex_permute_format(part) == (1, '')

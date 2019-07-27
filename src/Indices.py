@@ -1,8 +1,8 @@
 import collections
 from itertools import product, combinations
+from sympy.combinatorics import Permutation
 from sympy.utilities.iterables import multiset_permutations
-from mo_space import space_priority
-from Index import Index
+from src.Index import Index
 
 
 def sort_and_count_inversions(array):
@@ -71,9 +71,13 @@ class Indices:
     def __init__(self, list_of_indices):
         """
         The IndicesBase class to handle a list of Index.
-        :param list_of_indices: viable format: ["g0", "g1", ...],
-                                               [Index("g0"), Index("g1"), ...],
-                                               "g0, g1, ..." (separated by comma)
+        :param list_of_indices: a list of indices where each index can be casted to Index
+
+        Examples
+        --------
+        viable formats: 1) ["g0", "g1", ...]
+                        2) [Index("g0"), Index("g1"), ...],
+                        3) "g0, g1, ..." (separated by comma)
         """
         if not isinstance(list_of_indices, collections.Sequence):
             raise TypeError("Indices only accepts sequence type.")
@@ -90,9 +94,10 @@ class Indices:
                 try:
                     indices.append(Index(i))
                 except (ValueError, TypeError):
-                    print("Incoming list of Indices contains improper entries.")
-                    print(f"Cannot convert {i} to Index type.")
-                    raise ValueError("Invalid input for Indices initialization.")
+                    msg = f"Invalid input for Indices initialization: {list_of_indices}\n"
+                    msg += "Incoming list of Indices contains improper entries.\n"
+                    msg += f"Cannot convert {i} to Index type."
+                    raise ValueError(msg)
 
         # check if list_of_indices contains repeated indices
         indices_set = set(indices)
@@ -184,30 +189,25 @@ class Indices:
         indices_list = self.indices + other.indices
         return self.__class__(indices_list)
 
-    def __iadd__(self, other):
-        self._is_valid_operand_weak(other)
-        if len(self.indices_set.intersection(other.indices_set)) != 0:
-            raise ValueError("Two Indices objects contain common Index, thus cannot be added.")
-        self._indices += other.indices
-        self._size += other.size
-        self._indices_set = self.indices_set.union(other.indices_set)
-        return self
-
     def clone(self):
+        """ Clone this object. """
         return self.__class__(self.indices)
 
-    def remove(self, idx):
-        """ Return a Indices object without the idx-th element of this Indices object. """
-        temp = self.indices[:idx] + self.indices[idx + 1:]
-        return self.__class__(temp)
-
     def is_permutation(self, other):
-        """ Return True if there exists a permutation to bring self to other. """
+        """
+        Test if this and other can be related via a permutation.
+        :param other: the other Indices object
+        :return: True if there exists a permutation to bring self to other
+        """
         self._is_valid_operand_weak(other)
         return self.indices_set == other.indices_set
 
     def count_permutations(self, other):
-        """ Count the number of permutations needed from self to other. """
+        """
+        Count the number of permutations needed from self to other.
+        :param other: the other Indices object
+        :return: the number of inversions
+        """
 
         # check if list1 is a permutation of list2
         if not self.is_permutation(other):
@@ -221,12 +221,15 @@ class Indices:
         permuted = [0] * other.size
         for i, v in enumerate(other):
             permuted[i] = sequence[v]
-        n_inversions = sort_and_count_inversions(permuted)[1]
 
-        return n_inversions
+        return Permutation(permuted).inversions()
 
     def latex(self, dollar=False):
-        """ Return the latex form (a string) of this Indices object. """
+        """
+        The latex form of this Indices.
+        :param dollar: add '$' at both ends for math mode
+        :return: a string for the latex form
+        """
         out = "{{ {} }}".format(" ".join([i.latex() for i in self]))
         if dollar:
             out = "$" + out + "$"
@@ -235,16 +238,6 @@ class Indices:
     def ambit(self):
         """ Return the ambit form (a string) of this Indices object. """
         return ",".join(map(str, self.indices))
-
-    def count_index_space(self, list_of_space):
-        """ Count the number Index whose MO space lie in the given list. """
-        if not set(list_of_space) <= set(space_priority.keys()):
-            print("Given space list:", list_of_space)
-            print("Allowed space list:", space_priority.keys())
-            raise ValueError("Given list of MO space contains invalid elements.")
-
-        counter = collections.Counter([i.space for i in self.indices])
-        return sum([counter[i] for i in list_of_space])
 
     def canonicalize(self):
         """
@@ -263,7 +256,11 @@ class Indices:
         return not self.indices_set.isdisjoint(other.indices_set)
 
     def n_multiset_permutation(self, part):
-        """ Return the number of multiset permutations of this Indices object. """
+        """
+        Compute the number of multiset permutations.
+        :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
+        :return: the number of multiset permutations
+        """
         if not self.exist_permute_format(part):
             return 1
         n = len(part)
@@ -273,12 +270,17 @@ class Indices:
         return len(list(multiset_permutations(list_index)))
 
     def exist_permute_format(self, part):
-        """ Return True if there is a valid multiset permutation. """
+        """
+        Return True if there is a non-trivial multiset permutation for antisymmetric indices.
+        :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
+        :return: always False for non-antisymmetric indices
+        """
         return False
 
     def latex_permute_format(self, part):
         """
         Compute the multiset-permutation form of this Indices object for latex.
+        :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
         :return: the number of multiset permutations and a string of permutation for latex
         """
         return 1, ""
@@ -286,6 +288,7 @@ class Indices:
     def ambit_permute_format(self, part):
         """
         Generate the multiset-permutation form and the corresponding sign of this Indices object for ambit.
+        :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
         :return: sign change, a string of permutation for ambit
         """
         yield 1, ",".join(map(str, self.indices))
@@ -297,9 +300,6 @@ class Indices:
     @property
     def spin_pure(self):
         raise TypeError("Only available for spin-integrated indices.")
-
-    def is_spin_pure(self):
-        return self.spin_pure
 
     def n_alpha(self):
         return self.spin_count[0]
@@ -347,7 +347,11 @@ class IndicesAntisymmetric(Indices):
         return self.__class__(list_index), (-1) ** permutation_count
 
     def exist_permute_format(self, part):
-        """ Return True if there is a valid multiset permutation. """
+        """
+        Test if the indices partitioning is non-trivial (i.e., 1).
+        :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
+        :return: True if the partition of indices yields a multiset permutation greater than one
+        """
         if self.size == 0:
             return False
         return len(part) != 1
@@ -355,18 +359,20 @@ class IndicesAntisymmetric(Indices):
     def latex_permute_format(self, part):
         """
         Compute the multiset-permutation form of this Indices object for latex.
+        :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
         :return: the number of multiset permutations and a string of permutation for latex
         """
-        nperm = self.n_multiset_permutation(part)
-        if nperm == 1:
+        n_perm = self.n_multiset_permutation(part)
+        if n_perm == 1:
             return 1, ""
         else:
             perm = ' / '.join([' '.join([i.latex() for i in indices]) for indices in part])
-            return nperm, f"{{\\cal P}}({perm})"
+            return n_perm, f"{{\\cal P}}({perm})"
 
     def ambit_permute_format(self, part):
         """
         Generate the multiset-permutation form and the corresponding sign of this Indices object for ambit.
+        :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
         :return: sign change, a string of permutation for ambit
         """
         n = len(part)
@@ -441,7 +447,11 @@ class IndicesSpinIntegrated(IndicesAntisymmetric):
         return self._spin_pure
 
     def exist_permute_format(self, part):
-        """ Return True if there is a valid multiset permutation. """
+        """
+        Test if the indices partitioning is non-trivial (i.e., 1).
+        :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
+        :return: True if the partition of indices yields a multiset permutation greater than one
+        """
         if not self.spin_pure:
             return False
         else:
@@ -450,6 +460,7 @@ class IndicesSpinIntegrated(IndicesAntisymmetric):
     def latex_permute_format(self, part):
         """
         Compute the multiset-permutation form of this Indices object for latex.
+        :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
         :return: the number of multiset permutations and a string of permutation for latex
         """
         if not self.spin_pure:
@@ -460,6 +471,7 @@ class IndicesSpinIntegrated(IndicesAntisymmetric):
     def ambit_permute_format(self, part):
         """
         Generate the multiset-permutation form and the corresponding sign of this Indices object for ambit.
+        :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
         :return: sign change, a string of permutation for ambit
         """
         if not self.spin_pure:

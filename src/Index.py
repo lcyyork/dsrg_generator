@@ -15,11 +15,13 @@ class Index:
         s = name[0]
         n = name[1:]
         if s not in space_priority:
-            print(f"{name} is not in the available MO spaces (g, p, v, h, c, a).")
-            raise ValueError("Improper Index name.")
+            msg = "Improper Index name:\n"
+            msg += f"{name} is not in the available MO spaces (g, p, v, h, c, a)."
+            raise ValueError(msg)
         if not n.isdigit():
-            print(f"{name} does not have an integer after the space label.")
-            raise ValueError("Improper Index name.")
+            msg = "Improper Index name:\n"
+            msg += f"{name} does not have an integer after the space label."
+            raise ValueError(msg)
 
         self._name = name
         self._space = s

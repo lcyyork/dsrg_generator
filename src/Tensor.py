@@ -6,36 +6,43 @@ from src.IndicesPair import IndicesPair, make_indices_pair
 from src.Indices import IndicesAntisymmetric
 
 
-def make_tensor_preset(tensor_type, upper_indices, lower_indices, indices_type=""):
-    """
-    Create a Tensor subclass object from upper and lower indices.
-    :param tensor_type: the preset type of tensor type
-    :param upper_indices: a list of Index or string for upper indices
-    :param lower_indices: a list of Index or string for lower indices
-    :param indices_type: the preset type of indices
-    :return: a Tensor subclass object
-    """
-    indices_pair = make_indices_pair(upper_indices, lower_indices, indices_type)
-    return Tensor.make_tensor(tensor_type, indices_pair)
+# # TODO: delete this
+# def make_tensor_preset(tensor_type, upper_indices, lower_indices, indices_type=""):
+#     """
+#     Create a Tensor subclass object from upper and lower indices.
+#     :param tensor_type: the preset type of tensor type
+#     :param upper_indices: a list of Index or string for upper indices
+#     :param lower_indices: a list of Index or string for lower indices
+#     :param indices_type: the preset type of indices
+#     :return: a Tensor subclass object
+#     """
+#     indices_pair = make_indices_pair(upper_indices, lower_indices, indices_type)
+#     return Tensor.make_tensor(tensor_type, indices_pair)
+#
+# 
+# # TODO: delete this
+# def make_tensor(name, upper_indices, lower_indices, indices_type="", priority=0):
+#     """
+#     Create a Tensor object from upper and lower indices.
+#     :param name: the name of tensor
+#     :param upper_indices: a list of Index or string for upper indices
+#     :param lower_indices: a list of Index or string for lower indices
+#     :param indices_type: the preset type of indices
+#     :param priority: the priority of tensor
+#     :return: a Tensor object
+#     """
+#     indices_pair = make_indices_pair(upper_indices, lower_indices, indices_type)
+#     return Tensor(indices_pair, name, priority)
 
 
-def make_tensor(name, upper_indices, lower_indices, indices_type="", priority=0):
-    """
-    Create a Tensor object from upper and lower indices.
-    :param name: the name of tensor
-    :param upper_indices: a list of Index or string for upper indices
-    :param lower_indices: a list of Index or string for lower indices
-    :param indices_type: the preset type of indices
-    :param priority: the priority of tensor
-    :return: a Tensor object
-    """
-    indices_pair = make_indices_pair(upper_indices, lower_indices, indices_type)
-    return Tensor(indices_pair, name, priority)
-
-
-class Tensor:
+class Tensor(IndicesPair):
     # available choices: 'cumulant', 'hole_density', 'Kronecker', 'cluster_amplitude', 'Hamiltonian'
     subclasses = dict()
+    subclasses_alias = {'cumulant': 'cumulant', 'lambda': 'cumulant', 'L': 'cumulant',
+                        'hole_density': 'hole_density', 'eta': 'hole_density', 'C': 'hole_density',
+                        'Kronecker': 'Kronecker', 'delta': 'Kronecker', 'K': 'Kronecker',
+                        'cluster_amplitude': 'cluster_amplitude', 'T': 'cluster_amplitude',
+                        'Hamiltonian': 'Hamiltonian', 'H': 'Hamiltonian'}
 
     @classmethod
     def register_subclass(cls, tensor_type):
@@ -50,75 +57,42 @@ class Tensor:
             raise KeyError(f"Invalid tensor type '{tensor_type}', not in {', '.join(Tensor.subclasses.keys())}.")
         return cls.subclasses[tensor_type](params)
 
-    def __init__(self, indices_pair, name, priority=0):
+    def __init__(self, upper_indices, lower_indices, indices_type='so', name='Tensor', priority=0):
         """
         The tensor class.
+        :param upper_indices: Indices object / anything can be converted for upper indices
+        :param lower_indices: Indices object / anything can be converted for lower indices
+        :param indices_type: the type of indices, used if the indices are not Indices
         :param name: the tensor name
-        :param indices_pair: a IndicesPair object for the upper and lower indices
         :param priority: a integer for priority when sorting
         """
         if not isinstance(name, str):
             raise TypeError(f"Invalid tensor::name, given '{name.__class__.__name__}', required 'string'.")
         self._name = name
 
-        if not isinstance(indices_pair, IndicesPair):
-            t = f"{indices_pair.__class__.__name__}"
-            raise TypeError(f"Invalid tensor::indices_pair, given '{t}', required 'IndicesPair'.")
-        self._indices_pair = indices_pair
-
         if not isinstance(priority, int):
             raise TypeError(f"Invalid tensor::priority, given '{priority.__class__.__name__}', required 'int'.")
         self._priority = priority
+
+        IndicesPair.__init__(self, upper_indices, lower_indices, indices_type)
+
+    @classmethod
+    def from_tensor(cls, other):
+        """ Make a copy from the other Tensor. """
+        cls._is_valid_operand(other)
+        return cls(other.upper_indices, other.lower_indices, other.indices_type, other.name, other.priority)
 
     @property
     def name(self):
         return self._name
 
     @property
-    def indices_pair(self):
-        return self._indices_pair
-
-    @property
-    def indices(self):
-        return self.indices_pair.indices
-
-    @property
     def priority(self):
         return self._priority
 
     @property
-    def upper_indices(self):
-        return self.indices_pair.upper_indices
-
-    @property
-    def lower_indices(self):
-        return self.indices_pair.lower_indices
-
-    @property
-    def n_upper(self):
-        return self.indices_pair.n_upper
-
-    @property
-    def n_lower(self):
-        return self.indices_pair.n_lower
-
-    @property
-    def n_body(self):
-        if self.n_lower != self.n_upper:
-            raise ValueError(f"Invalid quest because n_lower ({self.n_lower}) != n_upper ({self.n_upper}).")
-        return self.n_lower
-
-    @property
-    def size(self):
-        return self.indices_pair.size
-
-    @property
     def comparison_tuple(self):
-        return self.priority, self.name, self.size, self.indices_pair
-
-    @property
-    def type_of_indices(self):
-        return self.indices_pair.type_of_indices
+        return self.priority, self.name, self.size, self.upper_indices, self.lower_indices
 
     @staticmethod
     def _is_valid_operand(other):
@@ -152,19 +126,26 @@ class Tensor:
     def __repr__(self):
         return self.latex()
 
-    def __hash__(self):
-        return hash(str(self))
-
     def latex(self, dollar=False):
-        out = f"{self.name}{self.indices_pair.latex()}"
+        """
+        Translate to latex form.
+        :param dollar: True if use inline math for latex
+        :return: a string of latex format
+        """
+        out = f"{self.name}{super().latex()}"
         if dollar:
             out = "$ " + out + " $"
         return out
 
-    def ambit(self):
+    def ambit(self, upper_first=True):
+        """
+        Translate to ambit code form.
+        :param upper_first: True if put upper indices in front of lower indices
+        :return: a string in ambit format
+        """
         if self.n_upper == self.n_lower:
-            return f"{self.name}{self.n_upper}{self.indices_pair.ambit()}"
-        return f"{self.name}_{self.n_upper}_{self.n_lower}{self.indices_pair.ambit()}"
+            return f"{self.name}{self.n_upper}{super().ambit(upper_first)}"
+        return f"{self.name}_{self.n_upper}_{self.n_lower}{super().ambit(upper_first)}"
 
     def downgrade_indices(self):
         """
@@ -172,30 +153,6 @@ class Tensor:
         :return: the largest space label of possible downgrades
         """
         raise NotImplementedError("Only available for Cumulant, HoleDensity, and Kronecker.")
-
-    def is_all_active(self):
-        """ Return True if this Tensor contains only active indices. """
-        return (self.upper_indices.count_index_space(['A', 'a']),
-                self.lower_indices.count_index_space(['A', 'a'])) == (self.n_upper, self.n_lower)
-
-    def is_spin_conserving(self):
-        """ Return True if spin Ms is preserved. """
-        if self.n_upper == self.n_lower:
-            return self.upper_indices.n_beta() == self.lower_indices.n_beta()
-        raise ValueError(f"Invalid quest, n_upper ({self.n_upper}) != n_lower ({self.n_lower}).")
-
-    def is_permutation(self, other):
-        """
-        Test if two tensors only differ by permutations of indices.
-        :param other: the compared Tensor object
-        :return: True if two tensors only differ by permutations of indices
-        """
-        self._is_valid_operand(other)
-        if self.comparison_tuple[:-1] != other.comparison_tuple[:-1]:
-            return False
-        else:
-            return self.upper_indices.is_permutation(other.upper_indices) and \
-                self.lower_indices.is_permutation(other.lower_indices)
 
     def any_overlapped_indices(self, other):
         """
@@ -212,8 +169,9 @@ class Tensor:
         Sort the Tensor indices to canonical order.
         :return: a tuple of (tensor with sorted indices, sign)
         """
-        indices_pair, sign = self.indices_pair.canonicalize()
-        return self.__class__(indices_pair, self.name, self.priority), sign
+        upper_indices, lower_indices, sign = self.canonicalize_indices()
+        tensor = self.__class__(upper_indices, lower_indices, self.indices_type, self.name, self.priority)
+        return tensor, sign
 
     def generate_spin_cases(self, particle_conserving=True):
         """
@@ -221,18 +179,14 @@ class Tensor:
         :param particle_conserving: True if generated indices preserve the spin
         :return: a Tensor object labeled by spin-integrated indices
         """
-        for indices_pair in self.indices_pair.generate_spin_cases(particle_conserving):
-            yield self.__class__(indices_pair, self.name, self.priority)
-
-    def base_strong_generating_set(self):
-        """ Return base and strong generating set for Term canonicalization. """
-        return self.indices_pair.base_strong_generating_set(True)
+        for upper, lower in self.generate_spin_cases_indices(particle_conserving):
+            yield self.__class__(upper, lower, self.indices_type, self.name, self.priority)
 
 
 @Tensor.register_subclass('cumulant')
 class Cumulant(Tensor):
-    def __init__(self, indices_pair, name='L', priority=2):
-        Tensor.__init__(self, indices_pair, name, priority)
+    def __init__(self, upper_indices, lower_indices, indices_type='so', name='L', priority=2):
+        Tensor.__init__(self, upper_indices, lower_indices, indices_type, name, priority)
         if not self.is_spin_conserving():
             raise ValueError("Cumulant should conserve spin Ms.")
 
@@ -241,10 +195,7 @@ class Cumulant(Tensor):
         Downgrade indices for Cumulant: 1cu -> hole only, 2cu -> active only.
         :return: the largest space label of possible downgrades
         """
-        if self.n_body != 1:
-            raise NotImplementedError("Indices of higher-order cumulant should be all active."
-                                      " No point to implement downgrade_indices here.")
-        else:
+        if self.n_body == 1:
             u_index, l_index = self.upper_indices[0], self.lower_indices[0]
             overlap = space_relation[u_index.space] & space_relation[l_index.space]
             n_overlap = len(overlap)
@@ -260,17 +211,20 @@ class Cumulant(Tensor):
                 else:
                     return 'A' if u_index.is_beta() else 'a'
 
-        return ''
+            return ''
+
+        raise NotImplementedError("Indices of higher-order cumulant should be all active."
+                                  " No point to implement downgrade_indices here.")
 
 
 @Tensor.register_subclass('hole_density')
 class HoleDensity(Tensor):
-    def __init__(self, indices_pair, name='C', priority=2):
-        Tensor.__init__(self, indices_pair, name, priority)
+    def __init__(self, upper_indices, lower_indices, indices_type='so', name='C', priority=2):
+        Tensor.__init__(self, upper_indices, lower_indices, indices_type, name, priority)
         if self.n_upper != 1 or self.n_lower != 1:
             raise ValueError("Hole density should be of 1 body.")
         if not self.is_spin_conserving():
-            raise ValueError("HoleDensity should converse spin Ms.")
+            raise ValueError("Hole density should converse spin Ms.")
 
     def downgrade_indices(self):
         """
@@ -297,8 +251,8 @@ class HoleDensity(Tensor):
 
 @Tensor.register_subclass('Kronecker')
 class Kronecker(Tensor):
-    def __init__(self, indices_pair, name='K', priority=-1):
-        Tensor.__init__(self, indices_pair, name, priority)
+    def __init__(self, upper_indices, lower_indices, indices_type='so', name='K', priority=-1):
+        Tensor.__init__(self, upper_indices, lower_indices, indices_type, name, priority)
         if self.n_upper != 1 or self.n_lower != 1:
             raise ValueError("Kronecker delta should be of 1 body.")
         if not self.is_spin_conserving():
@@ -322,43 +276,28 @@ class Kronecker(Tensor):
 
 @Tensor.register_subclass('cluster_amplitude')
 class ClusterAmplitude(Tensor):
-    def __init__(self, indices_pair, name='T', priority=1):
-        Tensor.__init__(self, indices_pair, name, priority)
+    def __init__(self, upper_indices, lower_indices, indices_type='so', name='T', priority=1):
+        Tensor.__init__(self, upper_indices, lower_indices, indices_type, name, priority)
         if not self.is_spin_conserving():
             raise ValueError("ClusterAmplitude should converse spin Ms.")
 
-    @property
-    def excitation(self):
-        return self._excitation
-
-    def ambit(self):
+    def ambit(self, upper_first=True):
         if any(['c' in space_relation[i.space.lower()] for i in self.lower_indices]) or \
                 any(['v' in space_relation[i.space.lower()] for i in self.upper_indices]):
-            return f"{self.name}{self.n_upper}{self.indices_pair.ambit(False)}"
+            return f"{self.name}{self.n_upper}{super().ambit(False)}"
         else:
-            return super().ambit()
+            return super().ambit(True)
 
-    def canonicalize(self):
-        """
-        Sort the Tensor indices to canonical order.
-        :return: a tuple of (tensor with sorted indices, sign)
-        """
-        indices_pair, sign = self.indices_pair.canonicalize()
-        return ClusterAmplitude(indices_pair, self.name, self.priority), sign
-
-    def generate_spin_cases(self, particle_conserving=True):
-        """
-        Generate tensors labeled by spin-integrated indices from spin-orbital indices.
-        :param particle_conserving: True if generated indices preserve the spin
-        :return: a Tensor object labeled by spin-integrated indices
-        """
-        for indices_pair in self.indices_pair.generate_spin_cases(particle_conserving):
-            yield ClusterAmplitude(indices_pair, self.name, self.priority)
+    def downgrade_indices(self):
+        raise NotImplementedError("Cannot downgrade indices for ClusterAmplitudes.")
 
 
 @Tensor.register_subclass('Hamiltonian')
 class Hamiltonian(Tensor):
-    def __init__(self, indices_pair, name='H', priority=0):
-        Tensor.__init__(self, indices_pair, name, priority)
+    def __init__(self, upper_indices, lower_indices, indices_type='so', name='H', priority=0):
+        Tensor.__init__(self, upper_indices, lower_indices, indices_type, name, priority)
         if not self.is_spin_conserving():
             raise ValueError("Hamiltonian should converse spin Ms.")
+
+    def downgrade_indices(self):
+        raise NotImplementedError("Cannot downgrade indices for Hamiltonian.")

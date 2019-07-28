@@ -138,6 +138,9 @@ class IndicesPair:
     def __repr__(self):
         return self.latex()
 
+    def __hash__(self):
+        return self.latex()
+
     def latex(self):
         """
         The latex form of IndicesPair
@@ -187,10 +190,6 @@ class IndicesPair:
         upper_indices, upper_sign = self.upper_indices.canonicalize()
         lower_indices, lower_sign = self.lower_indices.canonicalize()
         return IndicesPair(upper_indices, lower_indices), upper_sign * lower_sign
-
-    def void_indices_pair(self):
-        """ Return an empty IndicesPair. """
-        return IndicesPair('', '', self.indices_type)
 
     def base_strong_generating_set(self, hermitian):
         """

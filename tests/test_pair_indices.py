@@ -123,13 +123,6 @@ def test_generate_spin_cases():
     assert count == len(ref)
 
 
-def test_void():
-    a = IndicesPair("p0, p1", "g0, h2", 'spin-orbital')
-    b = a.void_indices_pair()
-    assert a.indices_type == b.indices_type
-    assert b.size == 0
-
-
 def test_base_strong_generating_set():
     assert IndicesPair("p0", "g0").asym_bsgs(False) == IndicesPair("p0", "g0", "sa").sym_bsgs(False)
     assert IndicesPair("p0", "g0").asym_bsgs(True) == IndicesPair("p0", "g0", "sa").sym_bsgs(True)

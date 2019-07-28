@@ -215,6 +215,14 @@ class HoleDensity(Tensor):
 
         return ''
 
+    def expand(self):
+        """
+        Expand hole density to Kronecker delta minus one cumulant.
+        :return: a tuple (Kronecker delta, one-cumulant)
+        """
+        upper, lower = self.upper_indices, self.lower_indices
+        return Kronecker(upper, lower, self.indices_type), Cumulant(upper, lower, self.indices_type)
+
 
 @Tensor.register_subclass('Kronecker')
 class Kronecker(Tensor):

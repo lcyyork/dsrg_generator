@@ -1,9 +1,6 @@
 import pytest
-from Tensor import make_tensor_preset, make_tensor
-from Tensor import Tensor, HoleDensity, Cumulant, Kronecker, ClusterAmplitude, Hamiltonian
-from IndicesPair import make_indices_pair
-from Indices import IndicesSpinAdapted, IndicesSpinIntegrated
-from sqop_contraction import expand_hole_densities
+from src.Tensor import Tensor, HoleDensity, Cumulant, Kronecker, ClusterAmplitude, Hamiltonian
+from src.Indices import IndicesSpinAdapted, IndicesSpinIntegrated
 
 
 def test_init():

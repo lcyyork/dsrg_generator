@@ -5,35 +5,6 @@ from sympy.combinatorics.perm_groups import PermutationGroup
 from src.Indices import Indices, IndicesSpinOrbital, IndicesAntisymmetric
 
 
-# TODO: delete this
-def make_indices_pair(upper_indices, lower_indices, indices_type=""):
-        """
-        Initialize a IndicesPair object from upper and lower indices.
-        :param upper_indices: a list of Index or string for upper indices
-        :param lower_indices: a list of Index or string for lower indices
-        :param indices_type: the type of indices, used if the indices are not Indices
-        :return: a IndicesPair object
-        """
-        def test_indices_type():
-            if indices_type not in Indices.subclasses_alias:
-                raise KeyError(f"Invalid indices type {indices_type}."
-                               f" Choices: {', '.join(Indices.subclasses.keys())}.")
-
-        if isinstance(upper_indices, Indices):
-            upper = upper_indices
-        else:
-            test_indices_type()
-            upper = Indices.make_indices(upper_indices, indices_type)
-
-        if isinstance(lower_indices, Indices):
-            lower = lower_indices
-        else:
-            test_indices_type()
-            lower = Indices.make_indices(lower_indices, indices_type)
-
-        return IndicesPair(upper, lower)
-
-
 class IndicesPair:
     def __init__(self, upper_indices, lower_indices, indices_type='so'):
         """

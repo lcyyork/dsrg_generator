@@ -173,11 +173,11 @@ class IndicesPair:
             for upper_indices in self.upper_indices.generate_spin_cases():
                 n_beta = upper_indices.n_beta()
                 for lower_indices in self.lower_indices.generate_spin_cases(n_beta):
-                    yield IndicesPair(upper_indices, lower_indices)
+                    yield IndicesPair(upper_indices, lower_indices, 'si')
         else:
             for upper_indices in self.upper_indices.generate_spin_cases():
                 for lower_indices in self.lower_indices.generate_spin_cases():
-                    yield IndicesPair(upper_indices, lower_indices)
+                    yield IndicesPair(upper_indices, lower_indices, 'si')
 
     def canonicalize(self):
         """

@@ -220,6 +220,9 @@ class IndicesPair:
         :param hermitian: upper and lower indices can be swapped if True
         :return: a tuple of (base, strong generating set)
         """
+        if self.size == 0:
+            raise ValueError("Cannot perform BSGS on empty indices pair.")
+
         if not isinstance(self.upper_indices, IndicesAntisymmetric):
             return self.sym_bsgs(hermitian)
         else:

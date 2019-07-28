@@ -1,38 +1,5 @@
-from sympy.combinatorics.tensor_can import get_symmetric_group_sgs, canonicalize, bsgs_direct_product, riemann_bsgs
-from sympy.combinatorics import Permutation
-
 from src.mo_space import space_relation
-from src.IndicesPair import IndicesPair, make_indices_pair
-from src.Indices import IndicesAntisymmetric
-
-
-# # TODO: delete this
-# def make_tensor_preset(tensor_type, upper_indices, lower_indices, indices_type=""):
-#     """
-#     Create a Tensor subclass object from upper and lower indices.
-#     :param tensor_type: the preset type of tensor type
-#     :param upper_indices: a list of Index or string for upper indices
-#     :param lower_indices: a list of Index or string for lower indices
-#     :param indices_type: the preset type of indices
-#     :return: a Tensor subclass object
-#     """
-#     indices_pair = make_indices_pair(upper_indices, lower_indices, indices_type)
-#     return Tensor.make_tensor(tensor_type, indices_pair)
-#
-# 
-# # TODO: delete this
-# def make_tensor(name, upper_indices, lower_indices, indices_type="", priority=0):
-#     """
-#     Create a Tensor object from upper and lower indices.
-#     :param name: the name of tensor
-#     :param upper_indices: a list of Index or string for upper indices
-#     :param lower_indices: a list of Index or string for lower indices
-#     :param indices_type: the preset type of indices
-#     :param priority: the priority of tensor
-#     :return: a Tensor object
-#     """
-#     indices_pair = make_indices_pair(upper_indices, lower_indices, indices_type)
-#     return Tensor(indices_pair, name, priority)
+from src.IndicesPair import IndicesPair
 
 
 class Tensor(IndicesPair):

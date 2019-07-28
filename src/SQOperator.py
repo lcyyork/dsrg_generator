@@ -154,6 +154,4 @@ class SecondQuantizedOperator(IndicesPair):
         :param hermitian: upper and lower indices can be swapped if True
         :return: a tuple of (base, strong generating set)
         """
-        if self.n_ops == 0:
-            raise ValueError("Cannot perform BSGS on zero-body operator.")
         return super().base_strong_generating_set(False)

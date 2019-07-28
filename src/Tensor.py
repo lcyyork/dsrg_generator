@@ -19,10 +19,10 @@ class Tensor(IndicesPair):
         return decorator
 
     @classmethod
-    def make_tensor(cls, tensor_type, params):
-        if tensor_type not in cls.subclasses:
+    def make_tensor(cls, tensor_type, *params):
+        if tensor_type not in cls.subclasses_alias:
             raise KeyError(f"Invalid tensor type '{tensor_type}', not in {', '.join(Tensor.subclasses.keys())}.")
-        return cls.subclasses[tensor_type](params)
+        return cls.subclasses[cls.subclasses_alias[tensor_type]](*params)
 
     def __init__(self, upper_indices, lower_indices, indices_type='so', name='Tensor', priority=0):
         """
@@ -43,12 +43,6 @@ class Tensor(IndicesPair):
 
         IndicesPair.__init__(self, upper_indices, lower_indices, indices_type)
 
-    @classmethod
-    def from_tensor(cls, other):
-        """ Make a copy from the other Tensor. """
-        cls._is_valid_operand(other)
-        return cls(other.upper_indices, other.lower_indices, other.indices_type, other.name, other.priority)
-
     @property
     def name(self):
         return self._name
@@ -57,14 +51,18 @@ class Tensor(IndicesPair):
     def priority(self):
         return self._priority
 
+    def clone(self):
+        """ Make a copy. """
+        return self.__class__(self.upper_indices, self.lower_indices, name=self.name, priority=self.priority)
+
     @property
     def comparison_tuple(self):
         return self.priority, self.name, self.size, self.upper_indices, self.lower_indices
 
-    @staticmethod
-    def _is_valid_operand(other):
+    def _is_valid_operand(self, other):
         if not isinstance(other, Tensor):
             raise TypeError(f"Cannot compare between 'Tensor' and '{other.__class__.__name__}'.")
+        self._is_valid_operand_indices(other)
 
     def __eq__(self, other):
         self._is_valid_operand(other)
@@ -89,6 +87,9 @@ class Tensor(IndicesPair):
     def __ge__(self, other):
         self._is_valid_operand(other)
         return self.comparison_tuple >= other.comparison_tuple
+
+    def __hash__(self):
+        return hash(self.comparison_tuple)
 
     def __repr__(self):
         return self.latex()
@@ -137,7 +138,7 @@ class Tensor(IndicesPair):
         :return: a tuple of (tensor with sorted indices, sign)
         """
         upper_indices, lower_indices, sign = self.canonicalize_indices()
-        tensor = self.__class__(upper_indices, lower_indices, self.indices_type, self.name, self.priority)
+        tensor = self.__class__(upper_indices, lower_indices, name=self.name, priority=self.priority)
         return tensor, sign
 
     def generate_spin_cases(self, particle_conserving=True):
@@ -147,7 +148,7 @@ class Tensor(IndicesPair):
         :return: a Tensor object labeled by spin-integrated indices
         """
         for upper, lower in self.generate_spin_cases_indices(particle_conserving):
-            yield self.__class__(upper, lower, self.indices_type, self.name, self.priority)
+            yield self.__class__(upper, lower, name=self.name, priority=self.priority)
 
 
 @Tensor.register_subclass('cumulant')
@@ -221,7 +222,7 @@ class HoleDensity(Tensor):
         :return: a tuple (Kronecker delta, one-cumulant)
         """
         upper, lower = self.upper_indices, self.lower_indices
-        return Kronecker(upper, lower, self.indices_type), Cumulant(upper, lower, self.indices_type)
+        return Kronecker(upper, lower), Cumulant(upper, lower)
 
 
 @Tensor.register_subclass('Kronecker')
@@ -253,18 +254,46 @@ class Kronecker(Tensor):
 class ClusterAmplitude(Tensor):
     def __init__(self, upper_indices, lower_indices, indices_type='so', name='T', priority=1):
         Tensor.__init__(self, upper_indices, lower_indices, indices_type, name, priority)
+
         if not self.is_spin_conserving():
             raise ValueError("ClusterAmplitude should converse spin Ms.")
 
+        # hole and particle indices cannot appear in upper/lower at the same time
+        def test_indices(block):
+            indices = self.upper_indices if block == 'upper' else self.lower_indices
+            de_ex_space = 'v' if block == 'upper' else 'c'
+
+            hole, part, de_ex = False, False, False
+
+            for i in indices:
+                space = space_relation[i.space.lower()]
+                if space == {'a'}:
+                    continue
+                if space <= space_relation['h']:
+                    hole = True
+                if space <= space_relation['p']:
+                    part = True
+                if de_ex_space in space:
+                    de_ex = True
+
+            if hole and part:
+                raise ValueError(f"Invalid {block} indices for cluster amplitudes: "
+                                 f"{indices} contains both hole and particle indices")
+
+            return de_ex
+
+        de_ex_upper = test_indices('upper')
+        de_ex_lower = test_indices('lower')
+        self._excitation = False if de_ex_upper or de_ex_lower else True
+
     def ambit(self, upper_first=True):
-        if any(['c' in space_relation[i.space.lower()] for i in self.lower_indices]) or \
-                any(['v' in space_relation[i.space.lower()] for i in self.upper_indices]):
-            return f"{self.name}{self.n_upper}{super().ambit(False)}"
-        else:
-            return super().ambit(True)
+        return super().ambit(self._excitation)
 
     def downgrade_indices(self):
         raise NotImplementedError("Cannot downgrade indices for ClusterAmplitudes.")
+
+    def is_all_active(self):
+        return all(i.space.lower() == 'a' for i in self.indices)
 
 
 @Tensor.register_subclass('Hamiltonian')

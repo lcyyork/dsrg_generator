@@ -13,6 +13,10 @@ def test_indices_init():
     assert a.size == 2
     assert a.indices_set == {Index("a0"), Index("P2")}
 
+    a = Indices([])
+    assert a == Indices("")
+    assert a.size == 0
+
 
 def test_indices_str():
     assert str(Indices(["p0", "p1", "a0", "h0", "g4", "g1", "c1", "v2"])) == "p0, p1, a0, h0, g4, g1, c1, v2"

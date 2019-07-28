@@ -78,12 +78,6 @@ class SecondQuantizedOperator(IndicesPair):
         """ Return True if this object conserves particles. """
         return self.n_ann == self.n_cre
 
-    def is_spin_conserving(self):
-        """ Return True if conserves spin Ms. """
-        if self.n_cre == self.n_ann:
-            return self.cre_ops.n_beta() == self.ann_ops.n_beta()
-        raise ValueError(f"Invalid quest, n_cre ({self.n_cre}) != n_ann ({self.n_ann}).")
-
     def exist_permute_format(self, p_cre, p_ann):
         """
         Test if there is a non-trivial multiset permutation.
@@ -139,8 +133,8 @@ class SecondQuantizedOperator(IndicesPair):
         :param particle_conserving: True if generated indices preserve the spin
         :return: a SecondQuantizedOperator using spin-integrated indices pair
         """
-        for indices_pair in super().generate_spin_cases(particle_conserving):
-            yield self.from_indices_pair(indices_pair)
+        for upper, lower in self.generate_spin_cases_indices(particle_conserving):
+            yield SecondQuantizedOperator(upper, lower, 'si')
 
     def canonicalize(self):
         """
@@ -155,7 +149,11 @@ class SecondQuantizedOperator(IndicesPair):
         return SecondQuantizedOperator([], [], self.indices_type)
 
     def base_strong_generating_set(self, hermitian=False):
-        """ Return the base and strong generating set for Term canonicalization. """
+        """
+        Return the base and strong generating set.
+        :param hermitian: upper and lower indices can be swapped if True
+        :return: a tuple of (base, strong generating set)
+        """
         if self.n_ops == 0:
             raise ValueError("Cannot perform BSGS on zero-body operator.")
         return super().base_strong_generating_set(False)

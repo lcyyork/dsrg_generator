@@ -139,7 +139,7 @@ class IndicesPair:
         return self.latex()
 
     def __hash__(self):
-        return self.latex()
+        return hash(self.latex())
 
     def latex(self):
         """
@@ -164,7 +164,16 @@ class IndicesPair:
         """
         Generate spin-integrated indices pair from spin-orbital indices.
         :param particle_conserving: True if generated indices preserve the spin
-        :return: Spin-integrated indices pair
+        :return: spin-integrated IndicesPair
+        """
+        for upper, lower in self.generate_spin_cases_indices(particle_conserving):
+            yield IndicesPair(upper, lower, 'si')
+
+    def generate_spin_cases_indices(self, particle_conserving):
+        """
+        Generate spin-integrated indices pair from spin-orbital indices.
+        :param particle_conserving: True if generated indices preserve the spin
+        :return: a tuple of spin-integrated upper and lower indices
         """
         if not isinstance(self.upper_indices, IndicesSpinOrbital):
             raise TypeError("Only available for spin-orbital indices.")
@@ -176,11 +185,17 @@ class IndicesPair:
             for upper_indices in self.upper_indices.generate_spin_cases():
                 n_beta = upper_indices.n_beta()
                 for lower_indices in self.lower_indices.generate_spin_cases(n_beta):
-                    yield IndicesPair(upper_indices, lower_indices, 'si')
+                    yield upper_indices, lower_indices
         else:
             for upper_indices in self.upper_indices.generate_spin_cases():
                 for lower_indices in self.lower_indices.generate_spin_cases():
-                    yield IndicesPair(upper_indices, lower_indices, 'si')
+                    yield upper_indices, lower_indices
+
+    def is_spin_conserving(self):
+        """ Return True if spin Ms is preserved. """
+        if self.n_upper == self.n_lower:
+            return self.upper_indices.n_beta() == self.lower_indices.n_beta()
+        raise ValueError(f"Invalid quest, n_upper ({self.n_upper}) != n_lower ({self.n_lower}).")
 
     def canonicalize(self):
         """
@@ -191,7 +206,7 @@ class IndicesPair:
         lower_indices, lower_sign = self.lower_indices.canonicalize()
         return IndicesPair(upper_indices, lower_indices), upper_sign * lower_sign
 
-    def base_strong_generating_set(self, hermitian):
+    def base_strong_generating_set(self, hermitian=True):
         """
         Return minimal base and strong generating set of this IndicesPair.
         :param hermitian: upper and lower indices can be swapped if True

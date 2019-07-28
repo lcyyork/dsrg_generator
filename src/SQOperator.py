@@ -1,7 +1,8 @@
 from collections import Counter
-from IndicesPair import IndicesPair, make_indices_pair
+from src.IndicesPair import IndicesPair, make_indices_pair
 
 
+# TODO: delete this
 def make_sqop(upper_indices, lower_indices, indices_type):
     """
     Initialize a SecondQuantizedOperator object from upper and lower indices.

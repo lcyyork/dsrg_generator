@@ -2,9 +2,10 @@ from sympy.combinatorics.tensor_can import get_symmetric_group_sgs, bsgs_direct_
 from sympy.combinatorics import Permutation
 from sympy.combinatorics.perm_groups import PermutationGroup
 
-from Indices import Indices, IndicesSpinOrbital, IndicesAntisymmetric
+from src.Indices import Indices, IndicesSpinOrbital, IndicesAntisymmetric
 
 
+# TODO: delete this
 def make_indices_pair(upper_indices, lower_indices, indices_type=""):
         """
         Initialize a IndicesPair object from upper and lower indices.
@@ -14,7 +15,7 @@ def make_indices_pair(upper_indices, lower_indices, indices_type=""):
         :return: a IndicesPair object
         """
         def test_indices_type():
-            if indices_type not in Indices.subclasses:
+            if indices_type not in Indices.subclasses_alias:
                 raise KeyError(f"Invalid indices type {indices_type}."
                                f" Choices: {', '.join(Indices.subclasses.keys())}.")
 
@@ -34,24 +35,31 @@ def make_indices_pair(upper_indices, lower_indices, indices_type=""):
 
 
 class IndicesPair:
-    def __init__(self, upper_indices, lower_indices):
+    def __init__(self, upper_indices, lower_indices, indices_type='so'):
         """
         The IndicesPair class to handle upper and lower indices for tensors or second-quantized operators.
         :param upper_indices: a Indices object for upper indices
         :param lower_indices: a Indices object for lower indices
+        :param indices_type: the type of indices, used if the indices are not Indices
         """
-        if not isinstance(upper_indices, Indices):
-            raise TypeError(f"upper_indices ('{upper_indices.__class__.__name__}') is not of 'Indices' type.")
-        if not isinstance(lower_indices, Indices):
-            raise TypeError(f"lower_indices ('{lower_indices.__class__.__name__}') is not of 'Indices' type.")
+        upper = upper_indices if isinstance(upper_indices, Indices) else \
+            Indices.make_indices(upper_indices, indices_type)
+        lower = lower_indices if isinstance(lower_indices, Indices) else \
+            Indices.make_indices(lower_indices, indices_type)
+
         if type(upper_indices) != type(lower_indices):
             raise TypeError(f"Inconsistent type for upper_indices ('{upper_indices.__class__.__name__}') "
                             f"and lower_indices ('{lower_indices.__class__.__name__}').")
 
-        self._upper_indices = upper_indices
-        self._lower_indices = lower_indices
-        self._n_upper = self._upper_indices.size
-        self._n_lower = self._lower_indices.size
+        self._upper_indices = upper
+        self._lower_indices = lower
+        self._indices_type = Indices.subclasses_alias[indices_type]
+
+    @classmethod
+    def from_indices_pair(cls, other):
+        """ Make a copy from a IndicesPair. """
+        IndicesPair._is_valid_operand(other)
+        return cls(other.upper_indices, other.lower_indices, other.indices_type)
 
     @property
     def upper_indices(self):
@@ -63,20 +71,34 @@ class IndicesPair:
 
     @property
     def n_upper(self):
-        return self._n_upper
+        return self.upper_indices.size
 
     @property
     def n_lower(self):
-        return self._n_lower
+        return self.lower_indices.size
 
     @property
     def size(self):
-        return self._n_upper + self._n_lower
+        return self.n_upper + self.n_lower
 
     @property
-    def indices(self):
-        return self.upper_indices.indices + self.lower_indices.indices
+    def n_body(self):
+        if self.n_lower != self.n_upper:
+            raise ValueError(f"Invalid quest because n_lower ({self.n_lower}) != n_upper ({self.n_upper}).")
+        return self.n_lower
 
+    @property
+    def indices(self, upper_first=True):
+        if upper_first:
+            return self.upper_indices.indices + self.lower_indices.indices
+        else:
+            return self.lower_indices.indices + self.upper_indices.indices
+
+    @property
+    def indices_type(self):
+        return self._indices_type
+
+    # TODO: delete this
     @property
     def type_of_indices(self):
         return self.upper_indices.__class__
@@ -168,7 +190,7 @@ class IndicesPair:
 
     def void_indices_pair(self):
         """ Return an empty IndicesPair. """
-        return IndicesPair(self.type_of_indices([]), self.type_of_indices([]))
+        return IndicesPair('', '', self.indices_type)
 
     def base_strong_generating_set(self, hermitian):
         """
@@ -177,8 +199,44 @@ class IndicesPair:
         :return: a tuple of (base, strong generating set)
         """
         if not isinstance(self.upper_indices, IndicesAntisymmetric):
-            raise NotImplementedError("Base and strong generating set are not implemented for spin-adapted indices.")
+            return self.sym_bsgs(hermitian)
+        else:
+            return self.asym_bsgs(hermitian)
 
+    def sym_bsgs(self, hermitian):
+        """
+        Return minimal base and strong generating set for non-antisymmetric indices.
+        :param hermitian: upper and lower indices can be swapped if True
+        :return: a tuple of (base, strong generating set)
+        """
+        if self.n_lower != self.n_upper:
+            raise ValueError(f"Invalid: n_lower ({self.n_lower}) != n_upper ({self.n_upper}).")
+
+        n_body = self.n_upper
+        cre = list(range(n_body))
+        ann = list(range(n_body, 2 * n_body))
+
+        perms = []
+        for i, j in zip(cre[:-1], cre[1:]):
+            perms.append(Permutation(2 * n_body + 1)(i, j)(i + n_body, j + n_body))
+
+        p = list(range(2 * n_body + 2))
+        if hermitian:
+            for i, j in zip(cre, ann):
+                p[i] = j
+                p[j] = i
+        perms.append(Permutation(p))
+
+        sym = PermutationGroup(*perms)
+        sym.schreier_sims()
+        return get_minimal_bsgs(sym.base, sym.strong_gens)
+
+    def asym_bsgs(self, hermitian):
+        """
+        Return minimal base and strong generating set for antisymmetric indices.
+        :param hermitian: upper and lower indices can be swapped if True
+        :return: a tuple of (base, strong generating set)
+        """
         if not hermitian:
             u_base, u_gens = get_symmetric_group_sgs(self.n_upper, 1)
             l_base, l_gens = get_symmetric_group_sgs(self.n_lower, 1)
@@ -194,8 +252,7 @@ class IndicesPair:
         perms = [Permutation(i, j)(sign[0], sign[1]) for i, j in zip(upper[:-1], upper[1:])]
         perms += [Permutation(i, j)(sign[0], sign[1]) for i, j in zip(lower[:-1], lower[1:])]
 
-        size = self.size + 2
-        p = list(range(size))
+        p = list(range(self.size + 2))
         for i, j in zip(upper, lower):
             p[i] = j
             p[j] = i

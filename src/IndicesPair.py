@@ -24,13 +24,6 @@ class IndicesPair:
 
         self._upper_indices = upper
         self._lower_indices = lower
-        self._indices_type = Indices.subclasses_alias[indices_type]
-
-    @classmethod
-    def from_indices_pair(cls, other):
-        """ Make a copy from a IndicesPair. """
-        IndicesPair._is_valid_operand(other)
-        return cls(other.upper_indices, other.lower_indices, other.indices_type)
 
     @property
     def upper_indices(self):
@@ -67,20 +60,24 @@ class IndicesPair:
 
     @property
     def indices_type(self):
-        return self._indices_type
-
-    # TODO: delete this
-    @property
-    def type_of_indices(self):
         return self.upper_indices.__class__
 
     def is_empty(self):
         return self.size == 0
 
-    @staticmethod
-    def _is_valid_operand(other):
+    def clone(self):
+        """ Make a copy. """
+        return self.__class__(self.upper_indices, self.lower_indices)
+
+    def _is_valid_operand_indices(self, other):
+        if self.indices_type != other.indices_type:
+            raise TypeError(f"Cannot compare between indices pairs due to different indices types: "
+                            f"{self.indices_type.__name__} vs {other.indices_type.__name__}")
+
+    def _is_valid_operand(self, other):
         if not isinstance(other, IndicesPair):
             raise TypeError(f"Cannot compare between 'IndicesPair' and '{other.__class__.__name__}'.")
+        self._is_valid_operand_indices(other)
 
     def __eq__(self, other):
         self._is_valid_operand(other)
@@ -110,7 +107,7 @@ class IndicesPair:
         return self.latex()
 
     def __hash__(self):
-        return hash(self.latex())
+        return hash((self.upper_indices, self.lower_indices))
 
     def latex(self):
         """

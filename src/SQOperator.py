@@ -11,12 +11,6 @@ class SecondQuantizedOperator(IndicesPair):
         """
         IndicesPair.__init__(self, cre_ops, ann_ops, indices_type)
 
-    @classmethod
-    def from_sq_op(cls, other):
-        """ Make a copy from any subclasses of IndicesPair. """
-        IndicesPair._is_valid_operand(other)
-        return cls(other.upper_indices, other.lower_indices, other.indices_type)
-
     @property
     def cre_ops(self):
         return super().upper_indices
@@ -37,14 +31,10 @@ class SecondQuantizedOperator(IndicesPair):
     def n_ops(self):
         return super().size
 
-    @property
-    def string_form(self):
-        return self.type_of_indices(self.cre_ops.indices + self.ann_ops.indices[::-1])
-
-    @staticmethod
-    def _is_valid_operand(other):
+    def _is_valid_operand(self, other):
         if not isinstance(other, SecondQuantizedOperator):
             raise TypeError(f"Cannot compare between 'SecondQuantizedOperator' and '{other.__class__.__name__}'.")
+        self._is_valid_operand_indices(other)
 
     def __repr__(self):
         return self.latex()
@@ -142,11 +132,11 @@ class SecondQuantizedOperator(IndicesPair):
         :return: a tuple of (sorted SecondQuantizedOperator, sign change)
         """
         upper, lower, sign = self.canonicalize_indices()
-        return SecondQuantizedOperator(upper, lower, self.indices_type), sign
+        return SecondQuantizedOperator(upper, lower), sign
 
     def void_sq_op(self):
         """ Return an empty SecondQuantizedOperator. """
-        return SecondQuantizedOperator([], [], self.indices_type)
+        return SecondQuantizedOperator(self.indices_type([]), self.indices_type([]))
 
     def base_strong_generating_set(self, hermitian=False):
         """

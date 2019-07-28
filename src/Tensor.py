@@ -1,9 +1,9 @@
 from sympy.combinatorics.tensor_can import get_symmetric_group_sgs, canonicalize, bsgs_direct_product, riemann_bsgs
 from sympy.combinatorics import Permutation
 
-from mo_space import space_relation
-from IndicesPair import IndicesPair, make_indices_pair
-from Indices import IndicesAntisymmetric
+from src.mo_space import space_relation
+from src.IndicesPair import IndicesPair, make_indices_pair
+from src.Indices import IndicesAntisymmetric
 
 
 def make_tensor_preset(tensor_type, upper_indices, lower_indices, indices_type=""):

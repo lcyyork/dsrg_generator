@@ -46,12 +46,13 @@ from collections import defaultdict, Counter
 from itertools import combinations, product, chain, accumulate
 from sympy.combinatorics import Permutation
 from sympy.utilities.iterables import multiset_permutations
-from integer_partition import integer_partition
-from mo_space import space_relation
-from Indices import IndicesSpinOrbital
-from IndicesPair import IndicesPair
-from SQOperator import SecondQuantizedOperator
-from Tensor import make_tensor_preset, HoleDensity, Kronecker, Cumulant
+
+from src.integer_partition import integer_partition
+from src.mo_space import space_relation
+from src.Indices import IndicesSpinOrbital
+from src.IndicesPair import IndicesPair
+from src.SQOperator import SecondQuantizedOperator
+from src.Tensor import make_tensor_preset, HoleDensity, Kronecker, Cumulant
 from timeit import default_timer as timer
 
 

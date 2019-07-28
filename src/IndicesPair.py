@@ -202,9 +202,17 @@ class IndicesPair:
         Sort the IndicesPair to canonical order.
         :return: a tuple of (sorted IndicesPair, sign change)
         """
+        upper_indices, lower_indices, sign = self.canonicalize_indices()
+        return IndicesPair(upper_indices, lower_indices), sign
+
+    def canonicalize_indices(self):
+        """
+        Sort the upper and lower indices to canonical order.
+        :return: a tuple of (sorted upper indices, sorted lower indices, sign change)
+        """
         upper_indices, upper_sign = self.upper_indices.canonicalize()
         lower_indices, lower_sign = self.lower_indices.canonicalize()
-        return IndicesPair(upper_indices, lower_indices), upper_sign * lower_sign
+        return upper_indices, lower_indices, upper_sign * lower_sign
 
     def base_strong_generating_set(self, hermitian=True):
         """

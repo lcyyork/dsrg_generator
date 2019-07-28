@@ -12,7 +12,7 @@ class SecondQuantizedOperator(IndicesPair):
         IndicesPair.__init__(self, cre_ops, ann_ops, indices_type)
 
     @classmethod
-    def from_indices_pair(cls, other):
+    def from_sq_op(cls, other):
         """ Make a copy from any subclasses of IndicesPair. """
         IndicesPair._is_valid_operand(other)
         return cls(other.upper_indices, other.lower_indices, other.indices_type)
@@ -141,8 +141,8 @@ class SecondQuantizedOperator(IndicesPair):
         Sort the indices to canonical order.
         :return: a tuple of (sorted SecondQuantizedOperator, sign change)
         """
-        indices_pair, sign = super().canonicalize()
-        return self.from_indices_pair(indices_pair), sign
+        upper, lower, sign = self.canonicalize_indices()
+        return SecondQuantizedOperator(upper, lower, self.indices_type), sign
 
     def void_sq_op(self):
         """ Return an empty SecondQuantizedOperator. """

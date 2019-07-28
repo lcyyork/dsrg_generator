@@ -1,7 +1,7 @@
 def integer_partition(n):
     """
     Partition an integer n to small components using ZS1 algorithm.
-    see Intern. J. Computer Math., Vol. 70. pp. 319 by A. Zoghbiu and I. Stojmenovic
+    see Intern. J. Computer Math., Vol. 70. pp. 319 by A. Zoghbi and I. Stojmenovic
 
     other implementations see
     https://stackoverflow.com/questions/18503096/python-integer-partitioning-with-given-k-partitions

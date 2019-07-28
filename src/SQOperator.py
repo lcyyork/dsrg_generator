@@ -1,87 +1,41 @@
-from collections import Counter
-from src.IndicesPair import IndicesPair, make_indices_pair
+from src.IndicesPair import IndicesPair
 
 
-# TODO: delete this
-def make_sqop(upper_indices, lower_indices, indices_type):
-    """
-    Initialize a SecondQuantizedOperator object from upper and lower indices.
-    :param upper_indices: a list of Index or string for upper indices
-    :param lower_indices: a list of Index or string for lower indices
-    :param indices_type: the type of indices
-    :return: a SecondQuantizedOperator object
-    """
-    return SecondQuantizedOperator(make_indices_pair(upper_indices, lower_indices, indices_type))
-
-
-class SecondQuantizedOperator:
-    def __init__(self, indices_pair):
+class SecondQuantizedOperator(IndicesPair):
+    def __init__(self, cre_ops, ann_ops, indices_type='so'):
         """
         The second-quantized operator class.
-        :param indices_pair: a IndicesPair object
+        :param cre_ops: a Indices object / anything can be converted to Indices for creation operators
+        :param ann_ops: a Indices object / anything can be converted to Indices for annihilation operators
+        :param indices_type: the type of indices, used if the indices are not Indices
         """
-        if not isinstance(indices_pair, IndicesPair):
-            raise TypeError(f"Invalid indices_pair ('{indices_pair.__class__.__name__}'), requires 'IndicesPair'.")
+        IndicesPair.__init__(self, cre_ops, ann_ops, indices_type)
 
-        self._indices_pair = indices_pair
-
-    @property
-    def indices_pair(self):
-        return self._indices_pair
+    @classmethod
+    def from_indices_pair(cls, other):
+        """ Make a copy from any subclasses of IndicesPair. """
+        IndicesPair._is_valid_operand(other)
+        return cls(other.upper_indices, other.lower_indices, other.indices_type)
 
     @property
     def cre_ops(self):
-        return self.indices_pair.upper_indices
+        return super().upper_indices
 
     @property
     def ann_ops(self):
-        return self.indices_pair.lower_indices
-
-    @property
-    def upper_indices(self):
-        return self.indices_pair.upper_indices
-
-    @property
-    def lower_indices(self):
-        return self.indices_pair.lower_indices
+        return super().lower_indices
 
     @property
     def n_cre(self):
-        return self.indices_pair.n_upper
+        return super().n_upper
 
     @property
     def n_ann(self):
-        return self.indices_pair.n_lower
-
-    @property
-    def n_upper(self):
-        return self.indices_pair.n_upper
-
-    @property
-    def n_lower(self):
-        return self.indices_pair.n_lower
+        return super().n_lower
 
     @property
     def n_ops(self):
-        return self.n_cre + self.n_ann
-
-    @property
-    def n_body(self):
-        if self.n_lower != self.n_upper:
-            raise ValueError(f"Invalid quest because n_lower ({self.n_lower}) != n_upper ({self.n_upper}).")
-        return self.n_lower
-
-    @property
-    def size(self):
-        return self.indices_pair.size
-
-    @property
-    def indices(self):
-        return self.indices_pair.indices
-
-    @property
-    def type_of_indices(self):
-        return self.indices_pair.type_of_indices
+        return super().size
 
     @property
     def string_form(self):
@@ -91,30 +45,6 @@ class SecondQuantizedOperator:
     def _is_valid_operand(other):
         if not isinstance(other, SecondQuantizedOperator):
             raise TypeError(f"Cannot compare between 'SecondQuantizedOperator' and '{other.__class__.__name__}'.")
-
-    def __eq__(self, other):
-        self._is_valid_operand(other)
-        return self.indices_pair == other.indices_pair
-
-    def __ne__(self, other):
-        self._is_valid_operand(other)
-        return self.indices_pair != other.indices_pair
-
-    def __lt__(self, other):
-        self._is_valid_operand(other)
-        return self.indices_pair < other.indices_pair
-
-    def __le__(self, other):
-        self._is_valid_operand(other)
-        return self.indices_pair <= other.indices_pair
-
-    def __gt__(self, other):
-        self._is_valid_operand(other)
-        return self.indices_pair > other.indices_pair
-
-    def __ge__(self, other):
-        self._is_valid_operand(other)
-        return self.indices_pair >= other.indices_pair
 
     def __repr__(self):
         return self.latex()
@@ -127,7 +57,7 @@ class SecondQuantizedOperator:
         """
         if self.is_empty():
             return ""
-        out = f"a{self.indices_pair.latex()}"
+        out = f"a{super().latex()}"
         if dollar:
             out = "$ " + out + " $"
         return out
@@ -138,7 +68,7 @@ class SecondQuantizedOperator:
         :param cre_first: True if creation indices come in front of annihilation indices
         :return: a string of ambit form
         """
-        return self.indices_pair.ambit(cre_first)
+        return super().ambit(cre_first)
 
     def is_empty(self):
         """ Return True is this object is empty. """
@@ -155,16 +85,28 @@ class SecondQuantizedOperator:
         raise ValueError(f"Invalid quest, n_cre ({self.n_cre}) != n_ann ({self.n_ann}).")
 
     def exist_permute_format(self, p_cre, p_ann):
-        """ Return True if there exists a multiset permutation of this object. """
+        """
+        Test if there is a non-trivial multiset permutation.
+        :param p_cre: a partition of upper indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
+        :param p_ann: a partition of lower indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
+        :return: True if the number of multiset permutation is not one.
+        """
         return self.cre_ops.exist_permute_format(p_cre) or self.ann_ops.exist_permute_format(p_ann)
 
     def n_multiset_permutation(self, p_cre, p_ann):
-        """ Return the number of multiset permutations. """
+        """
+        Compute the number of multiset permutations.
+        :param p_cre: a partition of upper indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
+        :param p_ann: a partition of lower indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
+        :return: the number of multiset permutations
+        """
         return self.cre_ops.n_multiset_permutation(p_cre) * self.ann_ops.n_multiset_permutation(p_ann)
 
     def latex_permute_format(self, p_cre, p_ann):
         """
         Compute the multiset-permutation form of the SQOperator object.
+        :param p_cre: a partition of upper indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
+        :param p_ann: a partition of lower indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
         :return: a tuple of (the number of multiset permutations, a string for permutation, a string for operator)
         """
         if self.is_empty():
@@ -177,6 +119,8 @@ class SecondQuantizedOperator:
     def ambit_permute_format(self, p_cre, p_ann, cre_first=False):
         """
         Generate the multiset-permutation form for ambit.
+        :param p_cre: a partition of upper indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
+        :param p_ann: a partition of lower indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
         :param cre_first: True if creation operators comes before annihilation operators
         :return: a tuple of (sign, a string representation of operator)
         """
@@ -195,23 +139,23 @@ class SecondQuantizedOperator:
         :param particle_conserving: True if generated indices preserve the spin
         :return: a SecondQuantizedOperator using spin-integrated indices pair
         """
-        for indices_pair in self.indices_pair.generate_spin_cases(particle_conserving):
-            yield SecondQuantizedOperator(indices_pair)
+        for indices_pair in super().generate_spin_cases(particle_conserving):
+            yield self.from_indices_pair(indices_pair)
 
     def canonicalize(self):
         """
         Sort the indices to canonical order.
         :return: a tuple of (sorted SecondQuantizedOperator, sign change)
         """
-        indices_pair, sign = self.indices_pair.canonicalize()
-        return SecondQuantizedOperator(indices_pair), sign
+        indices_pair, sign = super().canonicalize()
+        return self.from_indices_pair(indices_pair), sign
 
     def void_sq_op(self):
         """ Return an empty SecondQuantizedOperator. """
-        return SecondQuantizedOperator(self.indices_pair.void_indices_pair())
+        return SecondQuantizedOperator([], [], self.indices_type)
 
-    def base_strong_generating_set(self):
+    def base_strong_generating_set(self, hermitian=False):
         """ Return the base and strong generating set for Term canonicalization. """
         if self.n_ops == 0:
             raise ValueError("Cannot perform BSGS on zero-body operator.")
-        return self.indices_pair.base_strong_generating_set(False)
+        return super().base_strong_generating_set(False)

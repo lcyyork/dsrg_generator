@@ -78,6 +78,10 @@ def test_indices_perm():
     assert a.is_permutation(Indices("g2, p1, p0, A4"))
 
 
+def test_indices_count_space():
+    assert Indices("p0, P1, a2, h0, g4, G1, C1, v2").count_index_space(['p', 'v', 'P', 'V']) == 3
+
+
 def test_any_overlap():
     a = Indices("p0, p1, g2, A4")
     b = Indices("p3, p1, c2, a4")

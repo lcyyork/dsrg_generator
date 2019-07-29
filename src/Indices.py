@@ -2,6 +2,8 @@ import collections
 from itertools import product, combinations
 from sympy.combinatorics import Permutation
 from sympy.utilities.iterables import multiset_permutations
+
+from src.mo_space import space_priority
 from src.Index import Index
 
 
@@ -243,6 +245,20 @@ class Indices:
     def ambit(self):
         """ Return the ambit form (a string) of this Indices object. """
         return ",".join(map(str, self.indices))
+
+    def count_index_space(self, list_of_space):
+        """
+        Count the number Index whose MO space lie in the given list.
+        :param list_of_space: a list of MO spaces
+        :return: the sum of matches
+        """
+        if not set(list_of_space) <= set(space_priority.keys()):
+            print("Given space list:", list_of_space)
+            print("Allowed space list:", space_priority.keys())
+            raise ValueError("Given list of MO space contains invalid elements.")
+
+        counter = collections.Counter([i.space for i in self.indices])
+        return sum([counter[i] for i in list_of_space])
 
     def canonicalize(self):
         """

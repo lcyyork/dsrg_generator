@@ -47,7 +47,8 @@ from itertools import combinations, product, chain, accumulate
 from sympy.combinatorics import Permutation
 from sympy.utilities.iterables import multiset_permutations
 
-from src.integer_partition import integer_partition
+from src.helper.integer_partition import integer_partition
+from src.helper.multiprocess_helper import calculate_star
 from src.mo_space import space_relation
 from src.Indices import IndicesSpinOrbital
 from src.SQOperator import SecondQuantizedOperator
@@ -495,14 +496,6 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
                 imap_unordered_it = pool.imap_unordered(calculate_star, tasks)
                 for results in imap_unordered_it:
                     yield results
-
-
-def calculate(func, args):
-    return func(*args)
-
-
-def calculate_star(args):
-    return calculate(*args)
 
 
 def contracted_operator_backtrack_macro(available, chosen, n_con, n_con_so_far,

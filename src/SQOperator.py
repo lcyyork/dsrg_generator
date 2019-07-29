@@ -45,8 +45,6 @@ class SecondQuantizedOperator(IndicesPair):
         :param dollar: True if use inline math for latex
         :return: a string of latex format
         """
-        if self.is_empty():
-            return ""
         out = f"a{super().latex()}"
         if dollar:
             out = "$ " + out + " $"

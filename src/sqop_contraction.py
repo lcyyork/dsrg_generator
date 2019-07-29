@@ -51,7 +51,7 @@ from src.integer_partition import integer_partition
 from src.mo_space import space_relation
 from src.Indices import IndicesSpinOrbital
 from src.SQOperator import SecondQuantizedOperator
-from src.Tensor import Tensor, HoleDensity, Kronecker, Cumulant
+from src.Tensor import Tensor, HoleDensity, Cumulant
 # from timeit import default_timer as timer
 
 
@@ -497,6 +497,14 @@ def compute_operator_contractions(ops_list, max_cu=3, max_n_open=6, min_n_open=0
                     yield results
 
 
+def calculate(func, args):
+    return func(*args)
+
+
+def calculate_star(args):
+    return calculate(*args)
+
+
 def contracted_operator_backtrack_macro(available, chosen, n_con, n_con_so_far,
                                         cre_available, ann_available, ops_so_far, all_cu_so_far):
     """
@@ -765,38 +773,16 @@ def expand_hole_densities(list_of_tensors):
     :param list_of_tensors: a list of Tensor objects
     :return: generate tuples of (sign, expanded Tensor objects)
     """
-    good_tensors, hole_densities = [], []
+    good_tensors, hole_densities_expanded = [], []
     for tensor in list_of_tensors:
-        hole_densities.append(tensor) if isinstance(tensor, HoleDensity) else good_tensors.append(tensor)
+        if isinstance(tensor, HoleDensity):
+            hole_densities_expanded.append(tensor.expand())
+        else:
+            good_tensors.append(tensor)
 
-    # if hole density contain any virtual index, it can only be delta
-    skip_cumulant = [hole.upper_indices[0].space == 'v' or hole.lower_indices[0].space == 'v'
-                     for hole in hole_densities]
-
-    n_hole = len(hole_densities)
-    if n_hole == 0:
+    if len(hole_densities_expanded) == 0:
         yield 1, list_of_tensors
     else:
-        for temp in product(range(2), repeat=n_hole):
-            sign = (-1) ** sum(temp)
-
-            if any([i and j for i, j in zip(temp, skip_cumulant)]):
-                continue
-
-            expanded = []
-            for i, to_cu in enumerate(temp):
-                upper_indices, lower_indices = hole_densities[i].upper_indices, hole_densities[i].lower_indices
-                if temp[i] == 0:
-                    expanded.append(Kronecker(upper_indices, lower_indices))
-                else:
-                    expanded.append(Cumulant(upper_indices, lower_indices))
-
-            yield sign, good_tensors + expanded
-
-
-def calculate(func, args):
-    return func(*args)
-
-
-def calculate_star(args):
-    return calculate(*args)
+        for expanded in product(*hole_densities_expanded):
+            sign = (-1) ** sum(isinstance(tensor, Cumulant) for tensor in expanded)
+            yield sign, good_tensors + list(expanded)

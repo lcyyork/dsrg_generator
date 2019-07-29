@@ -10,7 +10,6 @@
 *Project Variables, Functions, Classes*
 - `mo_space.py`: MO space info
 - `integer_partition.py`: function to partition an integer
-- `Timer.py`: Timer class grabbed from Stack Overflow
 
 
 *Core Classes* 

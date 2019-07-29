@@ -158,6 +158,10 @@ def test_ele_con_2():
         assert cons == ref[block]
 
 
+def test_contraction_1():
+    pass
+
+
 def test_expand_hole():
     tensors = [Tensor.make_tensor('Hamiltonian', "g0", "h1", 'spin-integrated'),
                Tensor.make_tensor('hole_density', "a4", "p3", 'spin-orbital'),
@@ -185,17 +189,8 @@ def test_expand_hole():
                 Tensor.make_tensor('Kronecker', "v0", "p6", 'spin-orbital'),
                 Tensor.make_tensor('cumulant', "h0", "p4", 'spin-orbital')])]
 
-    count = 0
-    for sign_tensors in expand_hole_densities(tensors):
+    expanded = list(expand_hole_densities(tensors))
+    for sign_tensors in expanded:
         assert sign_tensors in ref
-        count += 1
-    assert count == 4
+    assert len(expanded) == len(ref)
 
-
-# def test_sq_op_con():
-#     h = SecondQuantizedOperator("g0", "g1", 'spin-orbital')
-#     t = SecondQuantizedOperator("p0", "h0", 'spin-orbital')
-#     for i in compute_elementary_contractions_list([h, t]):
-#         print(i)
-#     for i in compute_operator_contractions([h, t]):
-#         print(i)

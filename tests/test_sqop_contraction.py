@@ -5,7 +5,7 @@ from src.SQOperator import SecondQuantizedOperator
 from src.Tensor import Tensor
 from src.sqop_contraction import expand_hole_densities
 from src.sqop_contraction import compute_elementary_contractions_list, compute_elementary_contractions_categorized
-from src.sqop_contraction import compute_operator_contractions
+from src.sqop_contraction import compute_operator_contractions, compute_operator_contractions_general
 
 
 def test_ele_con_list_1():
@@ -159,7 +159,44 @@ def test_ele_con_2():
 
 
 def test_contraction_1():
-    pass
+    h = SecondQuantizedOperator("g0", "g1")
+    t = SecondQuantizedOperator("p0", "h0")
+    ref = [[(1, [], SecondQuantizedOperator("g0, p0", "g1, h0"))],
+           [(1, [Tensor.make_tensor('L', "g0", "h0"), Tensor.make_tensor('K', "p0", "g1")],
+             SecondQuantizedOperator([], [])),
+            (-1, [Tensor.make_tensor('L', "g0", "h0"), Tensor.make_tensor('L', "p0", "g1")],
+             SecondQuantizedOperator([], []))],
+           [(-1, [Tensor.make_tensor('L', "g0", "h0")], SecondQuantizedOperator("p0", "g1"))],
+           [(1, [Tensor.make_tensor('K', "p0", "g1")], SecondQuantizedOperator("g0", "h0")),
+            (-1, [Tensor.make_tensor('L', "p0", "g1")], SecondQuantizedOperator("g0", "h0"))],
+           [(1, [Tensor.make_tensor('L', "g0, p0", "g1, h0")], SecondQuantizedOperator([], []))]
+           ]
+    count = 0
+    for i in compute_operator_contractions_general([h, t], max_cu=2, max_n_open=4):
+        assert i in ref
+        count += 1
+    assert count == len(ref)
+
+
+def test_contraction_2():
+    from timeit import default_timer as timer
+    from sympy import binomial
+    h = SecondQuantizedOperator("g0, g1", "g2, g3")
+    t2e = SecondQuantizedOperator("p0, p1", "h0, h1")
+    t2d = SecondQuantizedOperator("h2, h3", "p2, p3")
+    t1e = SecondQuantizedOperator("p4", "h4")
+    start = timer()
+    a = list(compute_operator_contractions_general([t2d, h, t2e, t1e], max_cu=1, n_process=4, batch_size=20))
+    print(timer() - start)
+    print(f"len(a) = {len(a)}")
+
+    start = timer()
+    count = 0
+    for i in compute_operator_contractions_general([t2d, h, t2e], max_cu=2, n_process=4, batch_size=100):
+        i[0] = binomial(15, 8)
+        count += 1
+    print(timer() - start)
+    print(f"count = {count}")
 
 
 def test_expand_hole():

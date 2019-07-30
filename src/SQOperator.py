@@ -11,6 +11,10 @@ class SecondQuantizedOperator(IndicesPair):
         """
         IndicesPair.__init__(self, cre_ops, ann_ops, indices_type)
 
+    @classmethod
+    def make_empty(cls, indices_type='so'):
+        return cls([], [], indices_type)
+
     @property
     def cre_ops(self):
         return super().upper_indices

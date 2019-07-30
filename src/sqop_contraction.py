@@ -650,9 +650,10 @@ def process_composite_categorized(com_cat, ele_con, compatible, upper_indices_se
             open_upper = IndicesSpinOrbital(sorted(upper_indices_set - contracted))
             open_lower = IndicesSpinOrbital(sorted(lower_indices_set - contracted))
             current_order += open_upper.indices + open_lower.indices[::-1]
+
+            sq_op = SecondQuantizedOperator(open_upper, open_lower)
         else:
-            open_upper, open_lower = IndicesSpinOrbital([]), IndicesSpinOrbital([])
-        sq_op = SecondQuantizedOperator(open_upper, open_lower)
+            sq_op = SecondQuantizedOperator.make_empty()
 
         # determine sign of current ordering
         sign = (-1) ** Permutation([base_order_map[i] for i in current_order]).inversions()
@@ -742,14 +743,11 @@ def compute_operator_contractions_general(ops_list, max_cu=3, max_n_open=6, min_
         if batch_size == 0:
             n_upper, n_lower = len(upper_indices_set), len(lower_indices_set)
             batch_size = estimate_batch_size(n_upper, n_lower, max_n_con, min_n_con, n_process)
-            print(batch_size)
 
         with multiprocessing.Pool(n_process, maxtasksperchild=1000) as pool:
-            tasks = []
-            for con in composite:
-                tasks.append((process_composite_contractions, (con, elementary_contractions, n_indices, expand_hole,
-                                                               base_order_map, upper_indices_set, lower_indices_set)
-                              ))
+            tasks = [(process_composite_contractions, (con, elementary_contractions, n_indices, expand_hole,
+                                                       base_order_map, upper_indices_set, lower_indices_set))
+                     for con in composite]
             imap_unordered_it = pool.imap_unordered(calculate_star, tasks, chunksize=batch_size)
             for results in imap_unordered_it:
                 yield results
@@ -838,9 +836,10 @@ def process_composite_contractions(contraction, elementary_contractions, n_indic
         open_lower_indices = IndicesSpinOrbital(sorted(Index(i[1:]) for i in lower_indices_set - contracted))
         current_order += [f"u{i.name}" for i in open_upper_indices]
         current_order += [f"l{i.name}" for i in open_lower_indices[::-1]]
+
+        sq_op = SecondQuantizedOperator(open_upper_indices, open_lower_indices)
     else:
-        open_upper_indices, open_lower_indices = IndicesSpinOrbital([]), IndicesSpinOrbital([])
-    sq_op = SecondQuantizedOperator(open_upper_indices, open_lower_indices)
+        sq_op = SecondQuantizedOperator.make_empty()
 
     # expand hole densities to delta - lambda_1
     sign_densities_pairs = expand_hole_densities(list_of_densities) if expand_hole else [(1, list_of_densities)]

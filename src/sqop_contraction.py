@@ -438,14 +438,8 @@ def compute_operator_contractions_connected(ops_list, max_cu=3, max_n_open=6, mi
     max_cu_allowed = check_max_cu(ops_list, max_cu)
 
     # original ordering of the second-quantized operators
-    base_order_indices = []
-    upper_indices_set, lower_indices_set = set(), set()
-    for sq_op in ops_list:
-        base_order_indices += sq_op.cre_ops.indices + sq_op.ann_ops.indices[::-1]
-        upper_indices_set.update(sq_op.cre_ops.indices)
-        lower_indices_set.update(sq_op.ann_ops.indices)
-    n_indices = len(base_order_indices)
-    base_order_map = {v: i for i, v in enumerate(base_order_indices)}
+    base_order_map, upper_indices_set, lower_indices_set = generate_base_order_map(ops_list)
+    n_indices = len(base_order_map)
 
     # max/min numbers of contractions
     max_n_con, min_n_con = n_indices - min_n_open, n_indices - max_n_open
@@ -489,11 +483,10 @@ def compute_operator_contractions_connected(ops_list, max_cu=3, max_n_open=6, mi
             batch_size = estimate_batch_size(n_upper, n_lower, max_n_con, min_n_con, n_process)
 
         with multiprocessing.Pool(n_process, maxtasksperchild=1000) as pool:
-            tasks = []
-            for comp_cat in comp_cats_list:
-                tasks.append((process_composite_categorized, (comp_cat, ele_con, compatible, upper_indices_set,
-                                                              lower_indices_set, base_order_map, n_indices,
-                                                              expand_hole)))
+            tasks = [(process_composite_categorized, (comp_cat, ele_con, compatible, upper_indices_set,
+                                                      lower_indices_set, base_order_map, n_indices, expand_hole))
+                     for comp_cat in comp_cats_list]
+
             imap_unordered_it = pool.imap_unordered(calculate_star, tasks, chunksize=batch_size)
             for results in imap_unordered_it:
                 yield results
@@ -640,16 +633,19 @@ def process_composite_categorized(com_cat, ele_con, compatible, upper_indices_se
         # cre/ann ordering of the current composite contraction
         current_order = []
         for con in contractions:
-            left = con.lower_indices if isinstance(con, HoleDensity) else con.upper_indices
-            right = con.upper_indices if isinstance(con, HoleDensity) else con.lower_indices
-            current_order += left.indices + right.indices[::-1]
+            if isinstance(con, HoleDensity):
+                current_order += [f"l{con.lower_indices[0].name}", f"u{con.upper_indices[0].name}"]
+            else:
+                current_order += [f"u{i.name}" for i in con.upper_indices]
+                current_order += [f"l{i.name}" for i in con.lower_indices[::-1]]
 
         # sort open indices
         if n_open != 0:
             contracted = set(current_order)
-            open_upper = IndicesSpinOrbital(sorted(upper_indices_set - contracted))
-            open_lower = IndicesSpinOrbital(sorted(lower_indices_set - contracted))
-            current_order += open_upper.indices + open_lower.indices[::-1]
+            open_upper = IndicesSpinOrbital(sorted(Index(i[1:]) for i in upper_indices_set - contracted))
+            open_lower = IndicesSpinOrbital(sorted(Index(i[1:]) for i in lower_indices_set - contracted))
+            current_order += [f"u{i.name}" for i in open_upper]
+            current_order += [f"l{i.name}" for i in open_lower[::-1]]
 
             sq_op = SecondQuantizedOperator(open_upper, open_lower)
         else:
@@ -739,6 +735,7 @@ def compute_operator_contractions_general(ops_list, max_cu=3, max_n_open=6, min_
             tasks = [(process_composite_contractions, (con, elementary_contractions, n_indices, expand_hole,
                                                        base_order_map, upper_indices_set, lower_indices_set))
                      for con in composite]
+
             imap_unordered_it = pool.imap_unordered(calculate_star, tasks, chunksize=batch_size)
             for results in imap_unordered_it:
                 yield results
@@ -837,8 +834,8 @@ def process_composite_contractions(contraction, elementary_contractions, n_indic
     current_order = []
 
     n_open = 0
-    for i in contraction:
-        ele_con = elementary_contractions[i]
+    for con in contraction:
+        ele_con = elementary_contractions[con]
         list_of_densities.append(ele_con)
         n_open += ele_con.n_upper
 

@@ -213,7 +213,7 @@ def test_contraction_2():
             (1, [make_tensor('L', 'g0, p0', 'h0, h1'), make_tensor('L', 'p1', 'g0')], SQ.make_empty())],
            [(1, [make_tensor('L', 'g0, p0, p1', 'g0, h0, h1')], SQ.make_empty())]]
 
-    a = list(compute_operator_contractions_general([h, t2e], max_cu=4, n_process=2, batch_size=0))
+    a = list(compute_operator_contractions_general([h, t2e], max_cu=3, n_process=2, batch_size=0))
     for i in a:
         assert i in ref
     assert len(a) == len(ref)  # 22
@@ -269,6 +269,31 @@ def test_contraction_4():
     a = list(compute_operator_contractions_general([t2d, h, t2e, t2ee], max_cu=1, n_process=4, batch_size=0))
     print(f"Time to compute T2^+ * H * T2 * T2: {timer() - start:.3f} s")
     assert len(a) == 72832
+
+
+def test_contraction_categorized_1():
+    h = SQ("g0", "g1")
+    t = SQ("p0", "h0")
+    ref = list(compute_operator_contractions([h, t], max_cu=2, max_n_open=4, for_commutator=False))
+    a = list(compute_operator_contractions([h, t], max_cu=2, max_n_open=4, for_commutator=True))
+    for i in a:
+        assert i in ref
+    assert len(a) == (len(ref) - 2)  # minus pure L2 and un-contracted
+
+
+def test_contraction_categorized_2():
+    h = SQ("g0", "g0")
+    t2e = SQ("p0, p1", "h0, h1")
+
+    ref = list(compute_operator_contractions_general([h, t2e], max_cu=3, n_process=2, batch_size=0))
+    ref = [(sign, sorted(densities), sq_op) for con in ref for sign, densities, sq_op in con]
+
+    a = list(compute_operator_contractions([h, t2e], max_cu=3, n_process=2, batch_size=0, for_commutator=True))
+    a = [(sign, sorted(densities), sq_op) for con in a for sign, densities, sq_op in con]
+
+    for i in a:
+        assert i in ref
+    assert len(a) == (len(ref) - 1 - 9)  # 1 un-contracted, 9 pure cumulant
 
 
 def test_expand_hole():

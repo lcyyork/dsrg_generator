@@ -66,6 +66,19 @@ class SecondQuantizedOperator(IndicesPair):
         """ Return True is this object is empty. """
         return self.n_ops == 0
 
+    def is_excitation(self):
+        """
+        Test if this second-quantized operator is a possible excitation operator.
+        :return: True if this is a possible excitation operator, otherwise False
+        """
+        for i in self.cre_ops:
+            if 'c' == i.space:
+                return False
+        for i in self.ann_ops:
+            if 'v' == i.space:
+                return False
+        return True
+
     def is_particle_conserving(self):
         """ Return True if this object conserves particles. """
         return self.n_ann == self.n_cre
@@ -136,7 +149,7 @@ class SecondQuantizedOperator(IndicesPair):
         upper, lower, sign = self.canonicalize_indices()
         return SecondQuantizedOperator(upper, lower), sign
 
-    def void_sq_op(self):
+    def void(self):
         """ Return an empty SecondQuantizedOperator. """
         return SecondQuantizedOperator(self.indices_type([]), self.indices_type([]))
 

@@ -72,7 +72,6 @@ class Term:
 
         self._list_of_tensors = sorted(list_of_tensors) if need_to_sort else list_of_tensors
         self._indices_set = set(connection.keys())
-        self._n_tensors = len(list_of_tensors)
         self._sorted = need_to_sort
 
         # determine the next available index for each space
@@ -86,6 +85,11 @@ class Term:
         """ Copy from a term. """
         sign = -1 if flip_sign else 1
         return cls(term.list_of_tensors, term.sq_op, sign * term.coeff)
+
+    @classmethod
+    def make_empty(cls, indices_type='so'):
+        """ Create an empty Term. """
+        return cls([], SecondQuantizedOperator.make_empty(indices_type), 0.0)
 
     @property
     def coeff(self):
@@ -110,7 +114,7 @@ class Term:
 
     @property
     def n_tensors(self):
-        return self._n_tensors
+        return len(self._list_of_tensors)
 
     @property
     def indices_set(self):
@@ -173,132 +177,17 @@ class Term:
     def is_excitation(self):
         """
         Test if this term is a possible excitation operator.
-        :return: True if this term is a possible excitation operator, otherwise False.
+        :return: True if this term is a possible excitation operator, otherwise False
         """
-        for index in self.sq_op.cre_ops:
-            if 'c' == index.space:
-                return False
-        for index in self.sq_op.ann_ops:
-            if 'v' == index.space:
-                return False
-        return True
+        return self.sq_op.is_excitation()
 
-    def void_term(self):
+    def void(self):
         """ Return an empty Term object. """
-        return Term([], self.sq_op.void_sq_op(), 0.0)
+        return Term([], self.sq_op.void(), 0.0)
 
     def is_void(self):
         """ Return True if this Term is zero. """
         return self.coeff == 0
-
-    def make_excitation(self, single_ref):
-        """
-        Make a Term to excitation operator if possible.
-        :param single_ref: use single-reference indices if True
-        :return: excitation operator if possible, otherwise an empty Term
-        """
-        if not self.is_excitation():
-            return self.void_term()
-
-        hole = 'c' if single_ref else 'h'
-        part = 'v' if single_ref else 'p'
-
-        replacement = {}
-        next_index_number = {i: 0 for i in self.next_index_number.keys()}
-        for i in self.sq_op.cre_ops:
-            overlap = space_relation[part] & space_relation[i.space]
-            if len(overlap) == 0:
-                return self.void_term()
-            s = part if overlap == space_relation[part] else overlap.pop()
-            replacement[i] = self._generate_next_index(s, next_index_number)
-        for i in self.sq_op.ann_ops:
-            overlap = space_relation[hole] & space_relation[i.space]
-            if len(overlap) == 0:
-                return self.void_term()
-            s = hole if overlap == space_relation[hole] else overlap.pop()
-            replacement[i] = self._generate_next_index(s, next_index_number)
-
-        for tensor in self.list_of_tensors:
-            for i in tensor.indices:
-                if i not in replacement:
-                    replacement[i] = self._generate_next_index(i.space, next_index_number)
-
-        sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
-
-        return Term(list_of_tensors, sq_op, self.coeff * sign, False).canonicalize_sympy()
-
-    def make_one_body_diagonal(self, single_ref):
-        """
-        Make a one-body Term to a diagonal operator.
-        :param single_ref: use single-reference indices if True
-        :return: yield diagonal one-body terms
-        """
-        if not self.sq_op.n_body == 1:
-            raise ValueError(f"{self} is not an one-body operator.")
-
-        cre_index = self.sq_op.cre_ops.indices[0]
-        ann_index = self.sq_op.ann_ops.indices[0]
-        overlap = space_relation[cre_index.space] & space_relation[ann_index.space]
-
-        if single_ref:
-            if 'a' in overlap:
-                overlap.remove('a')
-            if 'A' in overlap:
-                overlap.remove('A')
-
-        for s in overlap:
-            replacement = {}
-            next_index_number = {i: 0 for i in self.next_index_number.keys()}
-            replacement[ann_index] = self._generate_next_index(s, next_index_number)
-            replacement[cre_index] = self._generate_next_index(s, next_index_number)
-
-            for tensor in self.list_of_tensors:
-                for i in tensor.indices:
-                    if i not in replacement:
-                        replacement[i] = self._generate_next_index(i.space, next_index_number)
-
-            sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
-
-            yield Term(list_of_tensors, sq_op, self.coeff * sign, False).canonicalize_sympy()
-
-    def make_ddca(self, max_core, max_virt, single_ref):
-        """
-        Apply distinguished diagonal component approximation to this term.
-        :param max_core: the max number of core indices kept
-        :param max_virt: the max number of virtual indices kept
-        :param single_ref: ignore active indices
-        :return: yield filtered terms
-        """
-        indices_0 = self.sq_op.indices
-
-        for spaces in product(*[space_relation[i.space] for i in indices_0]):
-            count = {s: 0 for s in space_relation_so.keys()}
-            for s in spaces:
-                count[s.lower()] += 1
-            if count['c'] > max_core or count['v'] > max_virt:
-                continue
-            if count['a'] != 0 and single_ref:
-                continue
-
-            replacement = {}
-            next_index_number = {i: 0 for i in self.next_index_number.keys()}
-            for index_0, space in zip(indices_0, spaces):
-                replacement[index_0] = self._generate_next_index(space, next_index_number)
-            for i in self.indices_set:
-                if i not in replacement:
-                    replacement[i] = self._generate_next_index(i.space, next_index_number)
-
-            sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
-
-            yield Term(list_of_tensors, sq_op, self.coeff * sign, False).canonicalize_sympy()
-
-    def expand_composite_indices(self, single_ref):
-        """
-        Expand composite indices in the SecondQuantizedOperator of this term.
-        :param single_ref: ignore active indices
-        :return: yield expanded terms
-        """
-        return self.make_ddca(self.sq_op.n_ops, self.sq_op.n_ops, single_ref)
 
     @staticmethod
     def format_coeff(value, form=None):
@@ -615,7 +504,6 @@ class Term:
         self._list_of_tensors = sorted(self._replace_tensors_indices(final_tensors, replacement))
         self._sorted = True
         self._indices_set = set(replacement.values())
-        self._n_tensors = len(self._list_of_tensors)
 
     def build_adjacency_matrix(self, ignore_cumulant=True):
         """
@@ -915,6 +803,118 @@ class Term:
                 out.append(term)
 
         return out
+
+    # TODO: need to check spin cases, if works for diagonal indices
+    def make_excitation(self, single_ref):
+        """
+        Make a Term to excitation operator if possible.
+        :param single_ref: use single-reference indices if True
+        :return: excitation operator if possible, otherwise an empty Term
+        """
+        if not self.is_excitation():
+            return self.void()
+
+        hole = 'c' if single_ref else 'h'
+        part = 'v' if single_ref else 'p'
+
+        replacement = {}
+        next_index_number = {i: 0 for i in self.next_index_number.keys()}
+        for i in self.sq_op.cre_ops:
+            overlap = space_relation[part] & space_relation[i.space]
+            if len(overlap) == 0:
+                return self.void()
+            s = part if overlap == space_relation[part] else overlap.pop()
+            replacement[i] = self._generate_next_index(s, next_index_number)
+        for i in self.sq_op.ann_ops:
+            overlap = space_relation[hole] & space_relation[i.space]
+            if len(overlap) == 0:
+                return self.void()
+            s = hole if overlap == space_relation[hole] else overlap.pop()
+            replacement[i] = self._generate_next_index(s, next_index_number)
+
+        for tensor in self.list_of_tensors:
+            for i in tensor.indices:
+                if i not in replacement:
+                    replacement[i] = self._generate_next_index(i.space, next_index_number)
+
+        sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
+
+        return Term(list_of_tensors, sq_op, self.coeff * sign, False).canonicalize_sympy()
+
+    # TODO: check if works for diagonal indices
+    def make_one_body_diagonal(self, single_ref):
+        """
+        Make a one-body Term to a diagonal operator.
+        :param single_ref: use single-reference indices if True
+        :return: yield diagonal one-body terms
+        """
+        if not self.sq_op.n_body == 1:
+            raise ValueError(f"{self} is not an one-body operator.")
+
+        cre_index = self.sq_op.cre_ops.indices[0]
+        ann_index = self.sq_op.ann_ops.indices[0]
+        overlap = space_relation[cre_index.space] & space_relation[ann_index.space]
+
+        if single_ref:
+            if 'a' in overlap:
+                overlap.remove('a')
+            if 'A' in overlap:
+                overlap.remove('A')
+
+        for s in overlap:
+            replacement = {}
+            next_index_number = {i: 0 for i in self.next_index_number.keys()}
+            replacement[ann_index] = self._generate_next_index(s, next_index_number)
+            replacement[cre_index] = self._generate_next_index(s, next_index_number)
+
+            for tensor in self.list_of_tensors:
+                for i in tensor.indices:
+                    if i not in replacement:
+                        replacement[i] = self._generate_next_index(i.space, next_index_number)
+
+            sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
+
+            yield Term(list_of_tensors, sq_op, self.coeff * sign, False).canonicalize_sympy()
+
+    # TODO: check if works for diagonal indices
+    def make_ddca(self, max_core, max_virt, single_ref):
+        """
+        Apply distinguished diagonal component approximation to this term.
+        :param max_core: the max number of core indices kept
+        :param max_virt: the max number of virtual indices kept
+        :param single_ref: ignore active indices
+        :return: yield filtered terms
+        """
+        indices_0 = self.sq_op.indices
+
+        for spaces in product(*[space_relation[i.space] for i in indices_0]):
+            count = {s: 0 for s in space_relation_so.keys()}
+            for s in spaces:
+                count[s.lower()] += 1
+            if count['c'] > max_core or count['v'] > max_virt:
+                continue
+            if count['a'] != 0 and single_ref:
+                continue
+
+            replacement = {}
+            next_index_number = {i: 0 for i in self.next_index_number.keys()}
+            for index_0, space in zip(indices_0, spaces):
+                replacement[index_0] = self._generate_next_index(space, next_index_number)
+            for i in self.indices_set:
+                if i not in replacement:
+                    replacement[i] = self._generate_next_index(i.space, next_index_number)
+
+            sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
+
+            yield Term(list_of_tensors, sq_op, self.coeff * sign, False).canonicalize_sympy()
+
+    def expand_composite_indices(self, single_ref):
+        """
+        Expand composite indices in the SecondQuantizedOperator of this term.
+        :param single_ref: ignore active indices
+        :return: yield expanded terms
+        """
+        return self.make_ddca(self.sq_op.n_ops, self.sq_op.n_ops, single_ref)
 
 #
 # def read_latex_term(line):

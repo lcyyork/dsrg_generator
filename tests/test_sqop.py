@@ -167,10 +167,10 @@ def test_canonicalize():
 
 def test_void():
     a = SecondQuantizedOperator("G2, p0, p1", "g0, A0, h2", 'si')
-    b = a.void_sq_op()
+    b = a.void()
     assert a.indices_type == b.indices_type
     assert b.size == 0
-    assert b is not SecondQuantizedOperator("", "", 'si')
+    assert b is not SecondQuantizedOperator.make_empty('si')
 
 
 def test_base_strong_generating_set():

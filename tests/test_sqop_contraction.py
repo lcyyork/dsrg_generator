@@ -221,13 +221,13 @@ def test_contraction_2():
 
 
 def test_contraction_3():
-    def canonicalize_densities(densities, sign):
+    def canonicalize_densities(_densities, _sign):
         out = []
-        for d in densities:
+        for d in _densities:
             d_new, _s = d.canonicalize()
             out.append(d_new)
-            sign *= _s
-        return sign, out
+            _sign *= _s
+        return _sign, out
 
     h = SQ("g0", "g0")
     t1d = SQ("h0", "p0")
@@ -297,4 +297,3 @@ def test_expand_hole():
     for sign_tensors in expanded:
         assert sign_tensors in ref
     assert len(expanded) == len(ref)
-

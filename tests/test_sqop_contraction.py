@@ -172,11 +172,10 @@ def test_contraction_1():
            [(1, [make_tensor('K', "p0", "g1")], SQ("g0", "h0")),
             (-1, [make_tensor('L', "p0", "g1")], SQ("g0", "h0"))],
            [(1, [make_tensor('L', "g0, p0", "g1, h0")], SQ.make_empty())]]
-    count = 0
-    for i in compute_operator_contractions_general([h, t], max_cu=2, max_n_open=4):
+    a = list(compute_operator_contractions_general([h, t], max_cu=2, max_n_open=4))
+    for i in a:
         assert i in ref
-        count += 1
-    assert count == len(ref)
+    assert len(a) == len(ref)
 
 
 def test_contraction_2():
@@ -217,7 +216,13 @@ def test_contraction_2():
     a = list(compute_operator_contractions_general([h, t2e], max_cu=4, n_process=2, batch_size=0))
     for i in a:
         assert i in ref
-    assert len(a) == len(ref)
+    assert len(a) == len(ref)  # 22
+
+    a = list(compute_operator_contractions_general([h, t2e], max_cu=2, max_n_open=4, min_n_open=2,
+                                                   n_process=2, batch_size=0))
+    for i in a:
+        assert i in ref
+    assert len(a) == (len(ref) - 6)  # 16
 
 
 def test_contraction_3():

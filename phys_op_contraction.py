@@ -14,6 +14,7 @@ from sympy.core.mul import Mul
 from integer_partition import integer_partition
 from mo_space import space_relation, space_priority
 from Indices import Indices
+from src.helper.multiprocess_helper import calculate_star
 from IndicesPair import make_indices_pair
 from SQOperator import make_sqop, SecondQuantizedOperator
 from Tensor import make_tensor_preset, ClusterAmplitude, Hamiltonian, Cumulant
@@ -69,14 +70,6 @@ def ClusterOperator(k, start=0, excitation=True, name='T', scale_factor=1.0,
 
 def multiprocessing_canonicalize_contractions(tensors, sq_op, coeff):
     return Term(tensors, sq_op, coeff).canonicalize_sympy()
-
-
-def calculate(func, args):
-    return func(*args)
-
-
-def calculatestar(args):
-    return calculate(*args)
 
 
 def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0,
@@ -153,7 +146,7 @@ def canonicalize_contractions_batch(n_process, contractions, tensors, coeff, sim
         with multiprocessing.Pool(n_process, maxtasksperchild=1000) as pool:
             tasks = [(multiprocessing_canonicalize_contractions, (tensors + densities, sq_op, sign * coeff))
                      for sign, densities, sq_op in contractions]
-            imap_unordered_it = pool.imap_unordered(calculatestar, tasks)
+            imap_unordered_it = pool.imap_unordered(calculate_star, tasks)
             temp = [x for x in imap_unordered_it]
     return combine_terms(temp) if simplify else temp
 

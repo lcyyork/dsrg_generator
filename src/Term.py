@@ -37,32 +37,38 @@ class Term:
                             f" required 'SecondQuantizedOperator'.")
         self._sq_op = sq_op
 
-        # test if this term is connected
+        # test if this term is connected, need to separate diagonal indices
         connection = defaultdict(int)
         for i in sq_op.indices:
             connection[i] += 1
+        diagonal_indices = sq_op.diagonal_indices()
 
         for tensor in list_of_tensors:
             if not isinstance(tensor, Tensor):
-                raise TypeError(f"Invalid element in Term::list_of_tensors, given '{tensor.__class__.__name__}',"
-                                f" required 'Tensor' or derived type.")
+                raise TypeError(f"Invalid element in Term::list_of_tensors.\n"
+                                f"{tensor} ({tensor.__class__.__name__}) is not of 'Tensor' or its derived type.")
 
             if tensor.indices_type is not sq_op.indices_type:
-                raise TypeError(f"Invalid element in Term::list_of_tensors,"
-                                f" indices should be of type '{sq_op.indices_type}',"
-                                f" but found '{tensor.indices_type}'.")
+                raise TypeError(f"Invalid element in Term::list_of_tensors.\n"
+                                f"Inconsistent indices types: "
+                                f"{tensor} ({tensor.indices_type}), required '{sq_op.indices_type}'")
 
             for i in tensor.indices:
                 connection[i] += 1
+            diagonal_indices.update(tensor.diagonal_indices())
 
-        if any(v != 2 for v in connection.values()):
+        if any(v != 2 for k, v in connection.items() if k not in diagonal_indices):
             raise ValueError(f"Invalid Term because it is not connected.\n"
                              f"tensors: {list_of_tensors}\n"
                              f"operator: {sq_op}\n"
                              f"indices count: {connection}")
 
-        if any(v > 2 for v in connection.values()):
-            raise ValueError("Invalid Term because repeated indices are found among different Tensors.")
+        if any(connection[k] % 2 == 1 for k in diagonal_indices):
+            raise ValueError(f"Invalid Term because diagonal indices do not appear in pairs.\n"
+                             f"tensors: {list_of_tensors}\n"
+                             f"operator: {sq_op}\n"
+                             f"indices count: {connection}\n"
+                             f"diagonal indices: {diagonal_indices}")
 
         self._list_of_tensors = sorted(list_of_tensors) if need_to_sort else list_of_tensors
         self._indices_set = set(connection.keys())

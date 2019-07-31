@@ -218,30 +218,38 @@ def test_contraction_2():
     for i in a:
         assert i in ref
     assert len(a) == len(ref)
-    # for i in a:
-    #     temp = []
-    #     for sign, dens, sq in i:
-    #         dens_str = [f"make_tensor('{d.name}', '{d.upper_indices}', '{d.lower_indices}')" for d in dens]
-    #         sq_str = f"SQ('{sq.upper_indices}', '{sq.lower_indices}')"
-    #         temp.append(f"({sign}, [{', '.join(dens_str)}], {sq_str})")
-    #     print(f"[{', '.join(temp)}],")
 
 
 def test_contraction_3():
+    def canonicalize_densities(densities, sign):
+        out = []
+        for d in densities:
+            d_new, _s = d.canonicalize()
+            out.append(d_new)
+            sign *= _s
+        return sign, out
+
     h = SQ("g0", "g0")
     t1d = SQ("h0", "p0")
     t1e = SQ("p1", "h1")
+    ref = []
+    for step_1 in compute_operator_contractions_general([t1d, h], max_cu=2):
+        for sign_1, densities_1, sq_op_1 in step_1:
+            sign_1, densities_1 = canonicalize_densities(densities_1, sign_1)
+            max_cu = sq_op_1.n_body + 1
 
-    samples = [[(-1, [], SQ("g0, p1, h0", "g0, p0, h1"))],
-               [(-1, [make_tensor('K', 'p1', 'g0')], SQ('g0, h0', 'p0, h1')),
-                (1, [make_tensor('L', 'p1', 'g0')], SQ('g0, h0', 'p0, h1'))],
-               [(-1, [make_tensor('L', 'h0', 'h1')], SQ('g0, p1', 'g0, p0'))],
-               [(-1, [make_tensor('L', 'g0, p1', 'p0, h1')], SQ('h0', 'g0'))],
-               []
-               ]
-    a = list(compute_operator_contractions_general([t1d, h, t1e], max_cu=3, n_process=2, batch_size=0))
+            for step_2 in compute_operator_contractions_general([sq_op_1, t1e], max_cu=max_cu, n_process=2):
+                for sign_2, densities_2, sq_op_2 in step_2:
+                    sign_2, densities_2 = canonicalize_densities(densities_2, sign_2)
+                    ref.append((sign_1 * sign_2, sorted(densities_1 + densities_2), sq_op_2))
 
-
+    a = []
+    for con in compute_operator_contractions_general([t1d, h, t1e], max_cu=3, n_process=2, batch_size=0):
+        for sign, densities, sq_op in con:
+            sign, densities = canonicalize_densities(densities, sign)
+            a.append((sign, sorted(densities), sq_op))
+            assert a[-1] in ref
+    assert len(a) == len(ref)
 
 
 def test_contraction_4():

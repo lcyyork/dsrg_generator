@@ -3,17 +3,15 @@ from collections import defaultdict
 from fractions import Fraction
 from itertools import product, groupby, accumulate
 from math import factorial
-from sympy.combinatorics.tensor_can import get_symmetric_group_sgs, canonicalize
-from sympy.combinatorics.tensor_can import bsgs_direct_product, riemann_bsgs
-from sympy.combinatorics import Permutation, PermutationGroup
+from sympy.combinatorics.tensor_can import canonicalize
+from sympy.combinatorics import Permutation
 
 from typing import List
-from mo_space import space_priority, space_relation, space_priority_so, space_relation_so, mo_space
-from Index import Index
-from Indices import Indices, IndicesSpinOrbital, IndicesAntisymmetric
-from IndicesPair import IndicesPair
-from Tensor import Tensor, Cumulant, Hamiltonian, ClusterAmplitude, Kronecker, HoleDensity
-from SQOperator import SecondQuantizedOperator, make_sqop
+from src.mo_space import space_priority, space_relation, space_priority_so, space_relation_so, mo_space
+from src.Index import Index
+from src.Indices import Indices, IndicesSpinOrbital, IndicesAntisymmetric
+from src.Tensor import Tensor, Cumulant, Hamiltonian, ClusterAmplitude, Kronecker, HoleDensity
+from src.SQOperator import SecondQuantizedOperator
 from SpaceCounter import SpaceCounter
 
 
@@ -49,12 +47,12 @@ class Term:
                 raise TypeError(f"Invalid element in Term::list_of_tensors, given '{tensor.__class__.__name__}',"
                                 f" required 'Tensor' or derived type.")
 
-            if tensor.type_of_indices is not sq_op.type_of_indices:
+            if tensor.indices_type is not sq_op.indices_type:
                 raise TypeError(f"Invalid element in Term::list_of_tensors,"
-                                f" indices should be of type '{sq_op.type_of_indices}',"
-                                f" but found '{tensor.type_of_indices}'.")
+                                f" indices should be of type '{sq_op.indices_type}',"
+                                f" but found '{tensor.indices_type}'.")
 
-            for i in tensor.indices_pair.indices:
+            for i in tensor.indices:
                 connection[i] += 1
 
         if any(v != 2 for v in connection.values()):
@@ -439,8 +437,7 @@ class Term:
         Make current Term an empty Term.
         """
         self._coeff = 0.0
-        self._sq_op = SecondQuantizedOperator(IndicesPair(self.sq_op.type_of_indices([]),
-                                                          self.sq_op.type_of_indices([])))
+        self._sq_op = self.sq_op.void_sq_op()
         self._indices_set = set()
         self._list_of_tensors = []
 
@@ -464,10 +461,9 @@ class Term:
 
         list_of_tensors = []
         for tensor in input_tensors:
-            upper_indices = tensor.type_of_indices([replacement[i] for i in tensor.upper_indices])
-            lower_indices = tensor.type_of_indices([replacement[i] for i in tensor.lower_indices])
-            indices_pair = IndicesPair(upper_indices, lower_indices)
-            list_of_tensors.append(tensor.__class__(indices_pair, tensor.name, tensor.priority))
+            upper_indices = tensor.indices_type([replacement[i] for i in tensor.upper_indices])
+            lower_indices = tensor.indices_type([replacement[i] for i in tensor.lower_indices])
+            list_of_tensors.append(tensor.from_indices(upper_indices, lower_indices))
         return list_of_tensors
 
     @staticmethod
@@ -478,9 +474,9 @@ class Term:
         :param replacement: a replacement map for indices
         :return: a SecondQuantizedOperator object with replaced indices
         """
-        upper_indices = input_sqop.type_of_indices([replacement[i] for i in input_sqop.cre_ops])
-        lower_indices = input_sqop.type_of_indices([replacement[i] for i in input_sqop.ann_ops])
-        return SecondQuantizedOperator(IndicesPair(upper_indices, lower_indices))
+        upper_indices = input_sqop.indices_type([replacement[i] for i in input_sqop.cre_ops])
+        lower_indices = input_sqop.indices_type([replacement[i] for i in input_sqop.ann_ops])
+        return SecondQuantizedOperator(upper_indices, lower_indices)
 
     def _remove_kronecker_delta(self):
         """
@@ -549,7 +545,7 @@ class Term:
 
                     if space_label in ('c', 'C'):
                         if simplify_core_cumulant:
-                            self._list_of_tensors[i_tensor] = Kronecker(tensor.indices_pair)
+                            self._list_of_tensors[i_tensor] = Kronecker(tensor.upper_indices, tensor.lower_indices)
                         else:
                             replacement[u_index] = self._generate_next_index(space_label, next_index)
                             replacement[l_index] = self._generate_next_index(space_label, next_index)
@@ -861,20 +857,19 @@ class Term:
         gc = canonicalize(Permutation(g), dummies, [0] * len(dummies), *bsgs_list)
 
         # translate gc to Tensor and SecondQuantizedOperator
-        ann_ops = self.sq_op.type_of_indices([dummy_indices[i // 2] for i in gc[:self.sq_op.n_ann]])
-        cre_ops = self.sq_op.type_of_indices([dummy_indices[i // 2] for i in gc[self.sq_op.n_ann:self.sq_op.size]])
-        sq_op = SecondQuantizedOperator(IndicesPair(cre_ops, ann_ops))
+        ann_ops = self.sq_op.indices_type([dummy_indices[i // 2] for i in gc[:self.sq_op.n_ann]])
+        cre_ops = self.sq_op.indices_type([dummy_indices[i // 2] for i in gc[self.sq_op.n_ann:self.sq_op.size]])
+        sq_op = SecondQuantizedOperator(cre_ops, ann_ops)
 
         shift = self.sq_op.size
         list_of_tensors = []
         for tensor in self.list_of_tensors:
-            lower_indices = tensor.type_of_indices([dummy_indices[gc[i + shift] // 2] for i in range(tensor.n_lower)])
+            lower_indices = tensor.indices_type([dummy_indices[gc[i + shift] // 2] for i in range(tensor.n_lower)])
             shift += tensor.n_lower
-            upper_indices = tensor.type_of_indices([dummy_indices[gc[i + shift] // 2] for i in range(tensor.n_upper)])
+            upper_indices = tensor.indices_type([dummy_indices[gc[i + shift] // 2] for i in range(tensor.n_upper)])
             shift += tensor.n_upper
 
-            indices_pair = IndicesPair(upper_indices, lower_indices)
-            list_of_tensors.append(tensor.__class__(indices_pair, tensor.name, tensor.priority))
+            list_of_tensors.append(tensor.from_indices(upper_indices, lower_indices))
 
         sign = 1
         if consider_sign and g[-1] != gc[-1]:
@@ -887,8 +882,8 @@ class Term:
         Generate a list of spin-integrated Term objects.
         :return: a list of spin-integrated Terms
         """
-        if self.sq_op.type_of_indices is not IndicesSpinOrbital:
-            raise TypeError(f"Invalid indices, expected 'IndicesSpinOrbital', given '{self.sq_op.type_of_indices}'.")
+        if self.sq_op.indices_type is not IndicesSpinOrbital:
+            raise TypeError(f"Invalid indices, expected 'IndicesSpinOrbital', given '{self.sq_op.indices_type}'.")
 
         terms = []
 

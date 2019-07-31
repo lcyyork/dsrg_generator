@@ -55,6 +55,16 @@ class Tensor(IndicesPair):
         """ Make a copy. """
         return self.__class__(self.upper_indices, self.lower_indices, name=self.name, priority=self.priority)
 
+    def from_indices(self, upper_indices, lower_indices, indices_type='so'):
+        """
+        Make a new tensor of same type using the input indices.
+        :param upper_indices: Indices object / anything can be converted for upper indices
+        :param lower_indices: Indices object / anything can be converted for lower indices
+        :param indices_type: the type of indices, used if the indices are not Indices
+        :return: a new tensor
+        """
+        return self.__class__(upper_indices, lower_indices, indices_type, self.name, self.priority)
+
     @property
     def comparison_tuple(self):
         return self.priority, self.name, self.size, self.upper_indices, self.lower_indices

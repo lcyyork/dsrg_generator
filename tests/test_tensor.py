@@ -1,7 +1,7 @@
 import pytest
 from src.Indices import IndicesSpinAdapted, IndicesSpinIntegrated
 from src.IndicesPair import IndicesPair
-from src.Tensor import Tensor, HoleDensity, Cumulant, Kronecker, ClusterAmplitude, Hamiltonian
+from src.Tensor import Tensor, HoleDensity, Cumulant, Kronecker, ClusterAmplitude, HamiltonianTensor
 
 
 def test_init_1():
@@ -52,7 +52,7 @@ def test_ne():
 
 def test_lt():
     indices_pair = ("C1", "P2", 'spin-integrated')
-    assert Kronecker(*indices_pair) < Hamiltonian(*indices_pair) < ClusterAmplitude(*indices_pair) \
+    assert Kronecker(*indices_pair) < HamiltonianTensor(*indices_pair) < ClusterAmplitude(*indices_pair) \
         < HoleDensity(*indices_pair) < Cumulant(*indices_pair)
     assert ClusterAmplitude(*indices_pair) < Tensor.make_tensor('T', "c1,c2", "v2,v5", 'si')
     a = Tensor.make_tensor('cumulant', "a0,A2", "a3, A1", 'spin-integrated')

@@ -3,13 +3,14 @@ from src.IndicesPair import IndicesPair
 
 
 class Tensor(IndicesPair):
-    # available choices: 'cumulant', 'hole_density', 'Kronecker', 'cluster_amplitude', 'Hamiltonian'
+    # available choices: 'cumulant', 'hole_density', 'Kronecker', 'cluster_amplitude', 'HamiltonianTensor'
     subclasses = dict()
     subclasses_alias = {'cumulant': 'cumulant', 'lambda': 'cumulant', 'L': 'cumulant',
                         'hole_density': 'hole_density', 'eta': 'hole_density', 'C': 'hole_density',
                         'Kronecker': 'Kronecker', 'delta': 'Kronecker', 'K': 'Kronecker',
                         'cluster_amplitude': 'cluster_amplitude', 'T': 'cluster_amplitude',
-                        'Hamiltonian': 'Hamiltonian', 'H': 'Hamiltonian'}
+                        'HamiltonianTensor': 'HamiltonianTensor', 'Hamiltonian': 'HamiltonianTensor',
+                        'H': 'HamiltonianTensor'}
 
     @classmethod
     def register_subclass(cls, tensor_type):
@@ -308,12 +309,12 @@ class ClusterAmplitude(Tensor):
         return all(i.space.lower() == 'a' for i in self.indices)
 
 
-@Tensor.register_subclass('Hamiltonian')
-class Hamiltonian(Tensor):
+@Tensor.register_subclass('HamiltonianTensor')
+class HamiltonianTensor(Tensor):
     def __init__(self, upper_indices, lower_indices, indices_type='so', name='H', priority=0):
         Tensor.__init__(self, upper_indices, lower_indices, indices_type, name, priority)
         if not self.is_spin_conserving():
-            raise ValueError("Hamiltonian should converse spin Ms.")
+            raise ValueError("HamiltonianTensor should converse spin Ms.")
 
     def downgrade_indices(self):
-        raise NotImplementedError("Cannot downgrade indices for Hamiltonian.")
+        raise NotImplementedError("Cannot downgrade indices for HamiltonianTensor.")

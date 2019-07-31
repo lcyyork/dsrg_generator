@@ -10,7 +10,7 @@ from typing import List
 from src.mo_space import space_priority, space_relation, space_priority_so, space_relation_so, mo_space
 from src.Index import Index
 from src.Indices import Indices, IndicesSpinOrbital, IndicesAntisymmetric
-from src.Tensor import Tensor, Cumulant, Hamiltonian, ClusterAmplitude, Kronecker, HoleDensity
+from src.Tensor import Tensor, Cumulant, HamiltonianTensor, ClusterAmplitude, Kronecker, HoleDensity
 from src.SQOperator import SecondQuantizedOperator
 from SpaceCounter import SpaceCounter
 

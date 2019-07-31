@@ -70,6 +70,14 @@ def test_ambit():
     assert a.ambit() == '["p0,p1,g0,h2"]'
 
 
+def test_diagonal_indices():
+    a = IndicesPair("p0, p1", "g0, h2", 'spin-orbital')
+    assert a.diagonal_indices() == set()
+
+    a = IndicesPair("g0, p1", "g0, p1", 'spin-orbital')
+    assert a.diagonal_indices() == a.upper_indices.indices_set
+
+
 def test_canonicalize():
     a = IndicesPair("G2, p0, p1", "g0, A0, h2", 'spin-integrated')
     c, sign = a.canonicalize()
@@ -123,26 +131,37 @@ def test_generate_spin_cases():
     assert count == len(ref)
 
 
-def test_base_strong_generating_set():
+def test_base_strong_generating_set_1():
     assert IndicesPair("p0", "g0").asym_bsgs(False) == IndicesPair("p0", "g0", "sa").sym_bsgs(False)
     assert IndicesPair("p0", "g0").asym_bsgs(True) == IndicesPair("p0", "g0", "sa").sym_bsgs(True)
 
+
+def test_base_strong_generating_set_2():
     a = IndicesPair("p0, p1", "g0", 'sa')
     with pytest.raises(ValueError):
         a.base_strong_generating_set(False)
 
+    a = IndicesPair("g0, p1", "g0, h2", 'so')
+    assert a.base_strong_generating_set(True) == riemann_bsgs
+
+
+def test_base_strong_generating_set_3():
     a = IndicesPair("p0, p1", "g0, h2", 'sa')
     sym2 = ([0], [Permutation(5)(0, 1)(2, 3)])
     assert a.base_strong_generating_set(False) == sym2
     sym2 = ([0], [Permutation(5)(0, 1)(2, 3), Permutation(5)(0, 2)(1, 3)])
     assert a.base_strong_generating_set(True) == sym2
 
+
+def test_base_strong_generating_set_4():
     a = IndicesPair("p0, p1", "g0, h2", 'so')
     asym2 = ([0, 2], [Permutation(0, 1)(4, 5), Permutation(2, 3)(4, 5)])
     assert a.base_strong_generating_set(False) == asym2
     asym2 = ([0, 2], [Permutation(0, 1)(4, 5), Permutation(2, 3)(4, 5), Permutation(5)(0, 2)(1, 3)])
     assert a.base_strong_generating_set(True) == asym2 == riemann_bsgs
 
+
+def test_base_strong_generating_set_5():
     a = IndicesPair("p0, p1, v0", "g0, h2, c1", 'sa')
     sym3 = ([0, 1], [Permutation(7)(0, 1)(3, 4), Permutation(7)(1, 2)(4, 5)])
     assert a.base_strong_generating_set(False) == sym3

@@ -128,6 +128,13 @@ class IndicesPair:
             return f'["{self.lower_indices.ambit()},{self.upper_indices.ambit()}"]'
         return f'["{self.upper_indices.ambit()},{self.lower_indices.ambit()}"]'
 
+    def diagonal_indices(self):
+        """
+        Test if upper and lower indices contain common elements.
+        :return: a set of common indices
+        """
+        return self.upper_indices.indices_set & self.lower_indices.indices_set
+
     def generate_spin_cases(self, particle_conserving=True):
         """
         Generate spin-integrated indices pair from spin-orbital indices.

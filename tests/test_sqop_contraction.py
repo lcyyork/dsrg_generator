@@ -296,6 +296,51 @@ def test_contraction_categorized_2():
     assert len(a) == (len(ref) - 1 - 9)  # 1 un-contracted, 9 pure cumulant
 
 
+def test_contraction_categorized_3():
+    MT = Tensor.make_tensor
+
+    h = SQ("g0", "g0")
+    t1d = SQ("h0", "p0")
+    t1e = SQ("p1", "h1")
+
+    # 13 double pairwise, 9 single pairwise with 2-cumulant, 6 triple pairwise
+    ref = [(1, [MT('L', 'g0', 'h1'), MT('L', 'h0', 'g0')], SQ('p1', 'p0')),
+           (-1, [MT('K', 'p1', 'p0'), MT('L', 'h0', 'g0')], SQ('g0', 'h1')),
+           (1, [MT('L', 'p1', 'p0'), MT('L', 'h0', 'g0')], SQ('g0', 'h1')),
+           (-1, [MT('K', 'g0', 'p0'), MT('L', 'h0', 'h1')], SQ('p1', 'g0')),
+           (1, [MT('L', 'g0', 'p0'), MT('L', 'h0', 'h1')], SQ('p1', 'g0')),
+           (-1, [MT('K', 'p1', 'g0'), MT('L', 'h0', 'h1')], SQ('g0', 'p0')),
+           (1, [MT('L', 'p1', 'g0'), MT('L', 'h0', 'h1')], SQ('g0', 'p0')),
+           (1, [MT('K', 'g0', 'p0'), MT('K', 'p1', 'g0')], SQ('h0', 'h1')),
+           (-1, [MT('K', 'p1', 'g0'), MT('L', 'g0', 'p0')], SQ('h0', 'h1')),
+           (-1, [MT('K', 'g0', 'p0'), MT('L', 'p1', 'g0')], SQ('h0', 'h1')),
+           (1, [MT('L', 'g0', 'p0'), MT('L', 'p1', 'g0')], SQ('h0', 'h1')),
+           (-1, [MT('K', 'p1', 'p0'), MT('L', 'g0', 'h1')], SQ('h0', 'g0')),
+           (1, [MT('L', 'g0', 'h1'), MT('L', 'p1', 'p0')], SQ('h0', 'g0')),
+           (-1, [MT('L', 'h0', 'g0'), MT('L', 'g0, p1', 'p0, h1')], SQ.make_empty()),
+           (1, [MT('L', 'h0', 'h1'), MT('L', 'g0, p1', 'p0, g0')], SQ.make_empty()),
+           (1, [MT('K', 'g0', 'p0'), MT('L', 'h0, p1', 'g0, h1')], SQ.make_empty()),
+           (-1, [MT('L', 'g0', 'p0'), MT('L', 'h0, p1', 'g0, h1')], SQ.make_empty()),
+           (-1, [MT('L', 'g0', 'h1'), MT('L', 'h0, p1', 'p0, g0')], SQ.make_empty()),
+           (-1, [MT('K', 'p1', 'p0'), MT('L', 'h0, g0', 'g0, h1')], SQ.make_empty()),
+           (1, [MT('L', 'p1', 'p0'), MT('L', 'h0, g0', 'g0, h1')], SQ.make_empty()),
+           (1, [MT('K', 'p1', 'g0'), MT('L', 'h0, g0', 'p0, h1')], SQ.make_empty()),
+           (-1, [MT('L', 'p1', 'g0'), MT('L', 'h0, g0', 'p0, h1')], SQ.make_empty()),
+           (-1, [MT('K', 'p1', 'p0'), MT('L', 'g0', 'h1'), MT('L', 'h0', 'g0')], SQ.make_empty()),
+           (1, [MT('L', 'g0', 'h1'), MT('L', 'p1', 'p0'), MT('L', 'h0', 'g0')], SQ.make_empty()),
+           (1, [MT('K', 'g0', 'p0'), MT('K', 'p1', 'g0'), MT('L', 'h0', 'h1')], SQ.make_empty()),
+           (-1, [MT('K', 'p1', 'g0'), MT('L', 'g0', 'p0'), MT('L', 'h0', 'h1')], SQ.make_empty()),
+           (-1, [MT('K', 'g0', 'p0'), MT('L', 'p1', 'g0'), MT('L', 'h0', 'h1')], SQ.make_empty()),
+           (1, [MT('L', 'g0', 'p0'), MT('L', 'p1', 'g0'), MT('L', 'h0', 'h1')], SQ.make_empty())]
+
+    a = list(compute_operator_contractions([t1d, h, t1e], max_cu=3, n_process=2, batch_size=0, for_commutator=True))
+    a = [(sign, sorted(densities), sq_op) for con in a for sign, densities, sq_op in con]
+
+    for i in a:
+        assert i in ref
+    assert len(a) == len(ref)
+
+
 def test_expand_hole():
     tensors = [make_tensor('Hamiltonian', "g0", "h1", 'spin-integrated'),
                make_tensor('hole_density', "a4", "p3", 'spin-orbital'),

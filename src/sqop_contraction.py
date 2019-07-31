@@ -699,17 +699,8 @@ def compute_operator_contractions_general(ops_list, max_cu=3, max_n_open=6, min_
     max_cu_allowed = check_max_cu(ops_list, max_cu)
 
     # original ordering of the second-quantized operators
-    # we use 'u' and 'l' to distinguish upper and lower indices to allow diagonal contractions
-    base_order_indices = []
-    upper_indices_set, lower_indices_set = set(), set()
-    for sq_op in ops_list:
-        upper = [f"u{i.name}" for i in sq_op.cre_ops]
-        lower = [f"l{i.name}" for i in sq_op.ann_ops[::-1]]
-        base_order_indices += upper + lower
-        upper_indices_set.update(upper)
-        lower_indices_set.update(lower)
-    n_indices = len(base_order_indices)
-    base_order_map = {v: i for i, v in enumerate(base_order_indices)}
+    base_order_map, upper_indices_set, lower_indices_set = generate_base_order_map(ops_list)
+    n_indices = len(base_order_map)
 
     # un-contracted term
     if min_n_open <= n_indices <= max_n_open:
@@ -751,6 +742,35 @@ def compute_operator_contractions_general(ops_list, max_cu=3, max_n_open=6, min_
             imap_unordered_it = pool.imap_unordered(calculate_star, tasks, chunksize=batch_size)
             for results in imap_unordered_it:
                 yield results
+
+
+def generate_base_order_map(ops_list):
+    """
+    Compute the second-quantized operator ordering of the input operator list.
+    :param ops_list: a list of SecondQuantizedOperator to be contracted
+    :return: a tuple of (base order map, upper indices set, lower indices set)
+
+    Examples
+    --------
+    Consider ops_list = [a^{k}_{k} a^{pq}_{rs}, a^{ab}_{ij}].
+    The base ordering is k^+ k p^+ q^+ s r a^+ b^+ j i
+    The base ordering map is thus {k^+: 0, k: 1, p^+: 2, q^+: 3, s: 4, r: 5, a^+: 6, b^+: 7, j: 8, i: 9}
+    Note: we need to distinguish creation and annihilation operators to allow diagonal operators (a^{k}_{k}).
+    Specifically, we add 'u' and 'l' before each upper and lower index name.
+
+    For convenience, we also return the sets for upper indices and lower indices.
+    In this case, upper_indices = {k^+, p^+, q^+, a^+, b^+}, lower_indices = {k, r, s, i, j}
+    """
+    base_order_indices = []
+    upper_indices_set, lower_indices_set = set(), set()
+    for sq_op in ops_list:
+        upper = [f"u{i.name}" for i in sq_op.cre_ops]
+        lower = [f"l{i.name}" for i in sq_op.ann_ops[::-1]]
+        base_order_indices += upper + lower
+        upper_indices_set.update(upper)
+        lower_indices_set.update(lower)
+    base_order_map = {v: i for i, v in enumerate(base_order_indices)}
+    return base_order_map, upper_indices_set, lower_indices_set
 
 
 def compute_compatible_elementary_contractions_list(elementary_contractions):

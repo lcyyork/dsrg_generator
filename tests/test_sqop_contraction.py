@@ -254,24 +254,16 @@ def test_contraction_3():
 
 def test_contraction_4():
     from timeit import default_timer as timer
-    from sympy import binomial
+
     h = SQ("g0, g1", "g2, g3")
-    t2e = SQ("p0, p1", "h0, h1")
-    t2d = SQ("h2, h3", "p2, p3")
-    t1e = SQ("p4", "h4")
-    t2ee = SQ("p4, p5", "h4, h5")
-    start = timer()
-    a = list(compute_operator_contractions_general([t2d, h, t2e, t1e], max_cu=1, n_process=4, batch_size=20))
-    print(timer() - start)
-    print(f"len(a) = {len(a)}")
+    t2e = SQ("v0, v1", "c0, c1")
+    t2d = SQ("c2, c3", "v2, v3")
+    t2ee = SQ("v4, v5", "c4, c5")
 
     start = timer()
-    count = 0
-    for i in compute_operator_contractions_general([t2d, h, t2e, t2ee], max_cu=1, n_process=4, batch_size=0):
-        i[0] = binomial(15, 8)
-        count += 1
-    print(timer() - start)
-    print(f"count = {count}")
+    a = list(compute_operator_contractions_general([t2d, h, t2e, t2ee], max_cu=1, n_process=4, batch_size=0))
+    print(f"Time to compute T2^+ * H * T2 * T2: {timer() - start:.3f} s")
+    assert len(a) == 72832
 
 
 def test_expand_hole():

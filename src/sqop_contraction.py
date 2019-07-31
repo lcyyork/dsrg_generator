@@ -680,7 +680,7 @@ def estimate_batch_size(n_upper, n_lower, max_con, min_con, n_process):
     rough_size = 0
     for i in range(min_con // 2, max_con // 2 + 1):
         rough_size += binomial(n_upper, i) * binomial(n_lower, i)
-    return int(math.sqrt(rough_size) / n_process) + 1
+    return int(math.sqrt(rough_size / n_process)) + 1
 
 
 def compute_operator_contractions_general(ops_list, max_cu=3, max_n_open=6, min_n_open=0, expand_hole=True,

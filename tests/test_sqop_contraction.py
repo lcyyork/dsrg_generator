@@ -341,6 +341,22 @@ def test_contraction_categorized_3():
     assert len(a) == len(ref)
 
 
+def test_contraction_categorized_4():
+    from timeit import default_timer as timer
+
+    h = SQ("g0, g1", "g2, g3")
+    t2e = SQ("v0, v1", "c0, c1")
+    t2d = SQ("c2, c3", "v2, v3")
+    t2ee = SQ("v4, v5", "c4, c5")
+
+    start = timer()
+    a = [i for con in compute_operator_contractions([t2d, h, t2e, t2ee], max_cu=1, for_commutator=True,
+                                                    n_process=4, batch_size=0)
+         for i in con]
+    print(f"Time to compute T2^+ * H * T2 * T2: {timer() - start:.3f} s")
+    assert len(a) == 56128  # note that there are 72832 contractions in total
+
+
 def test_expand_hole():
     tensors = [make_tensor('Hamiltonian', "g0", "h1", 'spin-integrated'),
                make_tensor('hole_density', "a4", "p3", 'spin-orbital'),

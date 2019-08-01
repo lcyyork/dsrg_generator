@@ -61,6 +61,35 @@ def test_init_2():
     print(b)
 
 
+def test_latex_1():
+    list_of_tensors = [make_tensor('H', 'v0, v1', 'c0, c1'), make_tensor('t', 'c0, c1', 'v0, v1')]
+    sq_op = SecondQuantizedOperator.make_empty()
+    a = Term(list_of_tensors, sq_op, 0.25)
+    assert a.latex() == "1/4 H^{ v_{0} v_{1} }_{ c_{0} c_{1} } T^{ c_{0} c_{1} }_{ v_{0} v_{1} }"
+    assert a.latex(dollar=True) == "$1/4 H^{ v_{0} v_{1} }_{ c_{0} c_{1} } T^{ c_{0} c_{1} }_{ v_{0} v_{1} }$"
+
+
+def test_latex_2():
+    list_of_tensors = [make_tensor('H', 'v3, v4', 'v0, c3'),
+                       make_tensor('T', 'c0, c1', 'v1, v3'),
+                       make_tensor('T', 'c2, c3', 'v2, v4')]
+    sq_op = make_sq('v0, v1, v2', 'c0, c1, c2')
+    a = Term(list_of_tensors, sq_op, -1)
+
+    ref = "-1/18 & {\\cal P}(v_{0} / v_{1} / v_{2}) {\\cal P}(c_{0} c_{1} / c_{2}) " \
+          "H^{ v_{3} v_{4} }_{ v_{0} c_{3} } " \
+          "T^{ c_{0} c_{1} }_{ v_{1} v_{3} } " \
+          "T^{ c_{2} c_{3} }_{ v_{2} v_{4} } " \
+          "a^{ v_{0} v_{1} v_{2} }_{ c_{0} c_{1} c_{2} } \\\\"
+
+    assert a.latex(delimiter=True, backslash=True) == ref
+
+    ref = "-1 H^{ v_{3} v_{4} }_{ v_{0} c_{3} } T^{ c_{0} c_{1} }_{ v_{1} v_{3} } " \
+          "T^{ c_{2} c_{3} }_{ v_{2} v_{4} } a^{ v_{0} v_{1} v_{2} }_{ c_{0} c_{1} c_{2} }"
+
+    assert a.latex(permute_format=False) == ref
+
+
 def test_perm_part():
     list_of_tensors = [make_tensor('H', 'g0, g1', 'g2, p0'), make_tensor('T', 'h0, h1', 'p0, p1')]
     sq_op = make_sq('g0, g1, p1', 'g2, h0, h1')

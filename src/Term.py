@@ -203,6 +203,90 @@ class Term:
 
         return out
 
+    def latex(self, dollar=False, permute_format=True, delimiter=False, backslash=False):
+        """
+        Translate to latex form.
+        :param dollar: use math mode if True
+        :param permute_format: use permute format (when sq_op contains different MO spaces) if True
+        :param delimiter: use & delimiter for latex align environment if True
+        :param backslash: add \\ at the end for latex align environment if True
+        :return: latex form (a string) of the Term
+        """
+        tensors_str = " " + " ".join((tensor.latex() for tensor in self.list_of_tensors))
+
+        n_perm, perm_str, sq_op_str = 1, "", self.sq_op.latex()
+        if permute_format:
+            p_cre, p_ann = self.perm_partition_open()
+            n_perm, perm_str, sq_op_str = self.sq_op.latex_permute_format(p_cre, p_ann)
+
+        coeff_str = self.format_coeff(self.coeff / n_perm)
+
+        if delimiter:
+            coeff_str += " &"
+        if perm_str:
+            perm_str = " " + perm_str
+        if sq_op_str:
+            sq_op_str = " " + sq_op_str
+        if backslash:
+            sq_op_str += " \\\\"
+
+        out = coeff_str + perm_str + tensors_str + sq_op_str
+        if dollar:
+            out = "$" + out + "$"
+        return out
+
+    def ambit(self, name='C', ignore_permutations=False, init_temp=True, declared_temp=True):
+        """
+        Translate to ambit form, forced to add permutations if found.
+        :param name: output tensor name
+        :param ignore_permutations: ignore permutations printing
+        :param init_temp: initialize a temp tensor
+        :param declared_temp: declared a temp tensor previously
+        :return: ambit form (a string) of the Term
+        """
+        if not isinstance(name, str):
+            raise TypeError(f"Invalid ambit name, given '{name.__class__.__name__}', required 'str'.")
+
+        sq_op = self.sq_op
+
+        factor = factorial(sq_op.n_cre) * factorial(sq_op.n_ann)
+        p_cre, p_ann = self.perm_partition_open()
+        n_perm = sq_op.n_multiset_permutation(p_cre, p_ann)
+        coeff_str = self.format_coeff(self.coeff * factor / n_perm, 'ambit')
+
+        tensors_str = " * ".join((tensor.ambit() for tensor in self.list_of_tensors))
+        real_name = f"{name}{sq_op.n_ann}" if sq_op.is_particle_conserving() else f"{name}_{sq_op.n_ann}_{sq_op.n_cre}"
+
+        if not sq_op.exist_permute_format(p_cre, p_ann):
+            lhs = f"{real_name}{sq_op.ambit(cre_first=False)}"
+            rhs = f"{coeff_str} * {tensors_str}"
+            return lhs + " += " + rhs + ";"
+        else:
+            if not any([ignore_permutations, init_temp, declared_temp]):
+                return f'{real_name}{sq_op.ambit(cre_first=False)} += {coeff_str} * {tensors_str};\n'
+
+            out = ''
+            if init_temp:
+                space_str = "".join([i.space for i in sq_op.ann_ops] + [i.space for i in sq_op.cre_ops])
+                out = f'temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {{"{space_str}"}});\n'
+                declared_temp = True
+
+            t_name = 'temp' if declared_temp else real_name
+
+            if ignore_permutations:
+                return out + f'{t_name}{sq_op.ambit(cre_first=False)} += {coeff_str} * {tensors_str};'
+            else:
+                if declared_temp:
+                    temp_indices = f'{sq_op.ambit(cre_first=False)}'
+                    out += f'temp{temp_indices} += {coeff_str} * {tensors_str};\n'
+                    for sign, lhs_indices in sq_op.ambit_permute_format(p_cre, p_ann, cre_first=False):
+                        out += f"{real_name}{lhs_indices} {'+' if sign == 1 else '-'}= temp{temp_indices};\n"
+                else:
+                    for sign, lhs_indices in sq_op.ambit_permute_format(p_cre, p_ann, cre_first=False):
+                        out += f"{real_name}{lhs_indices} {'+' if sign == 1 else '-'}= {coeff_str} * {tensors_str};"
+
+            return out
+
     def perm_partition_open(self):
         """
         Test if there are any permutation format of this term.
@@ -254,90 +338,6 @@ class Term:
                     cat[i.space].append(i)
                 for space in sorted(cat.keys(), key=lambda x: space_priority[x]):
                     out.append(cat[space])
-
-            return out
-
-    def latex(self, dollar=False, permute_format=True, delimiter=False, backslash=False):
-        """
-        Translate to latex form.
-        :param dollar: use math mode if True
-        :param permute_format: use permute format (when sqop contains different MO spaces) if True
-        :param delimiter: use & delimiter for latex align environment if True
-        :param backslash: add \\ at the end for latex align environment if True
-        :return: latex form (string) of the Term
-        """
-        tensors_str = " " + " ".join((tensor.latex() for tensor in self.list_of_tensors))
-
-        n_perm, perm_str, sq_op_str = 1, "", self.sq_op.latex()
-        if permute_format:
-            p_cre, p_ann = self.perm_partition_open()
-            n_perm, perm_str, sq_op_str = self.sq_op.latex_permute_format(p_cre, p_ann)
-
-        coeff_str = self.format_coeff(self.coeff / n_perm)
-
-        if delimiter:
-            coeff_str += " &"
-        if perm_str:
-            perm_str = " " + perm_str
-        if sq_op_str:
-            sq_op_str = " " + sq_op_str
-        if backslash:
-            sq_op_str += " \\\\"
-
-        out = coeff_str + perm_str + tensors_str + sq_op_str
-        if dollar:
-            out = "$" + out + "$"
-        return out
-
-    def ambit(self, name='C', ignore_permutations=False, init_temp=True, declared_temp=True):
-        """
-        Translate to ambit form, forced to add permutations if found.
-        :param name: output tensor name
-        :param ignore_permutations: ignore permutations printing
-        :param init_temp: initialize a temp tensor
-        :param declared_temp: declared a temp tensor previously
-        :return: ambit form (string) of the Term
-        """
-        if not isinstance(name, str):
-            raise TypeError(f"Invalid ambit name, given '{name.__class__.__name__}', required 'str'.")
-
-        sq_op = self.sq_op
-
-        factor = factorial(sq_op.n_cre) * factorial(sq_op.n_ann)
-        p_cre, p_ann = self.perm_partition_open()
-        n_perm = sq_op.n_multiset_permutation(p_cre, p_ann)
-        coeff_str = self.format_coeff(self.coeff * factor / n_perm, 'ambit')
-
-        tensors_str = " * ".join((tensor.ambit() for tensor in self.list_of_tensors))
-        real_name = f"{name}{sq_op.n_ann}" if sq_op.is_particle_conserving() else f"{name}_{sq_op.n_ann}_{sq_op.n_cre}"
-
-        if not sq_op.perm_partition_open(p_cre, p_ann):
-            lhs = f"{real_name}{sq_op.ambit(cre_first=False)}"
-            rhs = f"{coeff_str} * {tensors_str}"
-            return lhs + " += " + rhs + ";"
-        else:
-            if not any([ignore_permutations, init_temp, declared_temp]):
-                return f'{real_name}{sq_op.ambit(cre_first=False)} += {coeff_str} * {tensors_str};\n'
-
-            out = ''
-            if init_temp:
-                space_str = "".join([i.space for i in sq_op.ann_ops] + [i.space for i in sq_op.cre_ops])
-                out = f'temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {{"{space_str}"}});\n'
-                declared_temp = True
-
-            t_name = 'temp' if declared_temp else real_name
-
-            if ignore_permutations:
-                return out + f'{t_name}{sq_op.ambit(cre_first=False)} += {coeff_str} * {tensors_str};'
-            else:
-                if declared_temp:
-                    temp_indices = f'{sq_op.ambit(cre_first=False)}'
-                    out += f'temp{temp_indices} += {coeff_str} * {tensors_str};\n'
-                    for sign, lhs_indices in sq_op.ambit_permute_format(p_cre, p_ann, cre_first=False):
-                        out += f"{real_name}{lhs_indices} {'+' if sign == 1 else '-'}= temp{temp_indices};\n"
-                else:
-                    for sign, lhs_indices in sq_op.ambit_permute_format(p_cre, p_ann, cre_first=False):
-                        out += f"{real_name}{lhs_indices} {'+' if sign == 1 else '-'}= {coeff_str} * {tensors_str};"
 
             return out
 

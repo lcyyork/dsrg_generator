@@ -8,7 +8,7 @@ class Tensor(IndicesPair):
     subclasses_alias = {'cumulant': 'cumulant', 'lambda': 'cumulant', 'L': 'cumulant',
                         'hole_density': 'hole_density', 'eta': 'hole_density', 'C': 'hole_density',
                         'Kronecker': 'Kronecker', 'delta': 'Kronecker', 'K': 'Kronecker',
-                        'cluster_amplitude': 'cluster_amplitude', 'T': 'cluster_amplitude',
+                        'cluster_amplitude': 'cluster_amplitude', 'T': 'cluster_amplitude', 't': 'cluster_amplitude',
                         'HamiltonianTensor': 'HamiltonianTensor', 'Hamiltonian': 'HamiltonianTensor',
                         'H': 'HamiltonianTensor'}
 

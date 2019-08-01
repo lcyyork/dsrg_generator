@@ -203,45 +203,59 @@ class Term:
 
         return out
 
-    def exist_permute_format(self):
+    def perm_partition_open(self):
         """
         Test if there are any permutation format of this term.
-        :param cre: test creation operators if True, else test for annihilation operators
-        :return: permutation partition of the indices P(ij/k/l) = [[i,j], [k], [l]]
+        :return: permutation partitions for upper and lower open indices
         """
         cre_ops = self.sq_op.cre_ops
         ann_ops = self.sq_op.ann_ops
-        tensor_indices = [tensor.upper_indices + tensor.lower_indices for tensor in self.list_of_tensors]
+        tensor_indices = [set(tensor.indices) for tensor in self.list_of_tensors]
 
-        def exist_permute_atomic(ops, tensor_indices):
-            if ops.size == 0:
-                return [[]]
-            elif ops.size == 1:
-                return [[ops[0]]]
-            else:
-                # test if indices are in different operators
-                processed = []
-                for indices in tensor_indices:
-                    open_indices = [i for i in indices if i in ops.indices]
-                    if len(open_indices) != 0:
-                        processed.append(open_indices)
+        return self._perm_part_atomic(cre_ops, tensor_indices), self._perm_part_atomic(ann_ops, tensor_indices)
 
-                out = []
-                for indices in sorted(processed):
-                    indices = sorted(indices)
-                    space = indices[0].space
-                    temp = [indices[0]]
-                    for index in indices[1:]:
-                        if index.space == space:
-                            temp.append(index)
-                        else:
-                            space = index.space
-                            out.append(temp)
-                            temp = [index]
-                    out.append(temp)
-                return out
+    @staticmethod
+    def _perm_part_atomic(ops, tensor_indices):
+        """
+        Test if a list of indices has permutation partitions.
+        If so, there is a permutation format for the SecondQuantizedOperator.
+        :param ops: an Indices object for upper/lower open indices
+        :param tensor_indices: a list of sets of tensors indices
+        :return: a permutation partition of the indices
 
-        return exist_permute_atomic(cre_ops, tensor_indices), exist_permute_atomic(ann_ops, tensor_indices)
+        Examples
+        --------
+        Consider ops = [i, j, k, l], tensor_indices = [[p, q, r, s], [i, j, a, b], [k, c], [l, p, q, m, b, c]].
+        Note that indices 'i' and 'j' belong to the second tensor, 'k' to the third, and 'l' to the last.
+        The permutation partition is thus P(ij/k/l) = [[i, j], [k], [l]].
+
+        Consider ops = [p, i, c], tensor_indices = [[p, i, a, b], [b, c, j, k]].
+        Indices 'p' and 'i' belong to the first tensor and 'c' belongs to the second tensor.
+        However, since 'p' and 'i' belong to different MO space, we need to separate these as well.
+        The permutation partition is thus P(p/c/i) = [[p], [c], [i]].
+        Note that here will generate repetitions if term is not canonicalized.
+        """
+        if ops.size == 0:
+            return [[]]
+        elif ops.size == 1:
+            return [[ops[0]]]
+        else:
+            # test if indices are in different operators
+            processed = []
+            for indices_set in tensor_indices:
+                open_indices = indices_set & ops.indices_set
+                if len(open_indices) != 0:
+                    processed.append(sorted(open_indices))
+
+            out = []
+            for indices in processed:
+                cat = defaultdict(list)
+                for i in indices:
+                    cat[i.space].append(i)
+                for space in sorted(cat.keys(), key=lambda x: space_priority[x]):
+                    out.append(cat[space])
+
+            return out
 
     def latex(self, dollar=False, permute_format=True, delimiter=False, backslash=False):
         """
@@ -256,7 +270,7 @@ class Term:
 
         n_perm, perm_str, sq_op_str = 1, "", self.sq_op.latex()
         if permute_format:
-            p_cre, p_ann = self.exist_permute_format()
+            p_cre, p_ann = self.perm_partition_open()
             n_perm, perm_str, sq_op_str = self.sq_op.latex_permute_format(p_cre, p_ann)
 
         coeff_str = self.format_coeff(self.coeff / n_perm)
@@ -290,14 +304,14 @@ class Term:
         sq_op = self.sq_op
 
         factor = factorial(sq_op.n_cre) * factorial(sq_op.n_ann)
-        p_cre, p_ann = self.exist_permute_format()
+        p_cre, p_ann = self.perm_partition_open()
         n_perm = sq_op.n_multiset_permutation(p_cre, p_ann)
         coeff_str = self.format_coeff(self.coeff * factor / n_perm, 'ambit')
 
         tensors_str = " * ".join((tensor.ambit() for tensor in self.list_of_tensors))
         real_name = f"{name}{sq_op.n_ann}" if sq_op.is_particle_conserving() else f"{name}_{sq_op.n_ann}_{sq_op.n_cre}"
 
-        if not sq_op.exist_permute_format(p_cre, p_ann):
+        if not sq_op.perm_partition_open(p_cre, p_ann):
             lhs = f"{real_name}{sq_op.ambit(cre_first=False)}"
             rhs = f"{coeff_str} * {tensors_str}"
             return lhs + " += " + rhs + ";"

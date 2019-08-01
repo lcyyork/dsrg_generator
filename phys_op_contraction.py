@@ -425,7 +425,7 @@ def sort_contraction_results(terms):
     out = defaultdict(list)
     for term in terms:
         space_str = "".join([i.space for i in term.sq_op.ann_ops] + [i.space for i in term.sq_op.cre_ops])
-        n_perm, perm_str, sq_op_str = term.sq_op.latex_permute_format(*term.exist_permute_format())
+        n_perm, perm_str, sq_op_str = term.sq_op.latex_permute_format(*term.perm_partition_open())
         out[(space_str, perm_str)].append(term)
     return out
 

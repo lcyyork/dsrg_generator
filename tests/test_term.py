@@ -153,12 +153,17 @@ def test_ge():
     pass
 
 
-def test_is_excitation():
-    pass
-
-
 def test_void():
-    pass
+    a = Term([make_tensor('H', 'g0, h1', 'g0, p1')], make_sq('g0, p1', 'g0, h1'), 0.0)
+    assert a.is_void()
+
+    b = a.void()
+    assert b.is_void()
+    assert b is not a
+    assert b != a
+
+    c = Term.make_empty('so')
+    assert b == c
 
 
 def test_perm_part():

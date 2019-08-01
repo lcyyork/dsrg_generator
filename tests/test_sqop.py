@@ -176,3 +176,10 @@ def test_void():
 def test_base_strong_generating_set():
     with pytest.raises(ValueError):
         SecondQuantizedOperator("", "", 'si').base_strong_generating_set()
+
+
+def test_possible_excitation():
+    assert SecondQuantizedOperator("g0, g1", "g2, p0").is_possible_excitation()
+    assert SecondQuantizedOperator("p0, p1", "c0, h0").is_possible_excitation()
+    assert not SecondQuantizedOperator("c0, h0", "p0, p1").is_possible_excitation()
+    assert not SecondQuantizedOperator("a0, A0", "a1, A1", 'si').is_possible_excitation()

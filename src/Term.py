@@ -180,12 +180,12 @@ class Term:
     def __repr__(self):
         return self.latex(permute_format=False)
 
-    def is_excitation(self):
+    def is_possible_excitation(self):
         """
         Test if this term is a possible excitation operator.
         :return: True if this term is a possible excitation operator, otherwise False
         """
-        return self.sq_op.is_excitation()
+        return self.sq_op.is_possible_excitation()
 
     def void(self):
         """ Return an empty Term object. """

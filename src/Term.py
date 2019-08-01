@@ -241,7 +241,6 @@ class Term:
             out = "$" + out + "$"
         return out
 
-    # TODO: need to disable for diagonal indices because ambit cannot handle repeated indices
     def ambit(self, name='C', ignore_permutations=False, init_temp=True, declared_temp=True):
         """
         Translate to ambit form, forced to add permutations if found.
@@ -253,6 +252,8 @@ class Term:
         """
         if not isinstance(name, str):
             raise TypeError(f"Invalid ambit name, given '{name.__class__.__name__}', required 'str'.")
+
+        out = "// Error: diagonal indices are not supported by ambit.\n" if len(self.diagonal_indices) != 0 else ''
 
         sq_op = self.sq_op
 
@@ -267,15 +268,14 @@ class Term:
         if not sq_op.exist_permute_format(p_cre, p_ann):
             lhs = f"{real_name}{sq_op.ambit(cre_first=False)}"
             rhs = f"{coeff_str} * {tensors_str}"
-            return lhs + " += " + rhs + ";"
+            out += f"{lhs} += {rhs};"
         else:
             if not any([ignore_permutations, init_temp, declared_temp]):
-                return f'{real_name}{sq_op.ambit(cre_first=False)} += {coeff_str} * {tensors_str};\n'
+                return out + f'{real_name}{sq_op.ambit(cre_first=False)} += {coeff_str} * {tensors_str};\n'
 
-            out = ''
             if init_temp:
                 space_str = "".join([i.space for i in sq_op.ann_ops] + [i.space for i in sq_op.cre_ops])
-                out = f'temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {{"{space_str}"}});\n'
+                out += f'temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {{"{space_str}"}});\n'
                 declared_temp = True
 
             t_name = 'temp' if declared_temp else real_name
@@ -292,7 +292,7 @@ class Term:
                     for sign, lhs_indices in sq_op.ambit_permute_format(p_cre, p_ann, cre_first=False):
                         out += f"{real_name}{lhs_indices} {'+' if sign == 1 else '-'}= {coeff_str} * {tensors_str};"
 
-            return out
+        return out
 
     def perm_partition_open(self):
         """

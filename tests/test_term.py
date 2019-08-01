@@ -99,15 +99,38 @@ def test_latex_3():
 
 
 def test_ambit_1():
-    pass
+    list_of_tensors = [make_tensor('H', 'v0, v1', 'c0, c1'), make_tensor('t', 'c0, c1', 'v0, v1')]
+    sq_op = SecondQuantizedOperator.make_empty()
+    a = Term(list_of_tensors, sq_op, 0.25)
+    assert a.ambit(name='X') == 'X0 += (1.0 / 4.0) * H2["v0,v1,c0,c1"] * T2["c0,c1,v0,v1"];'
+
+    list_of_tensors = [make_tensor('H', 'v0, v1', 'g0, c1'), make_tensor('t', 'c0, c1', 'v0, v1')]
+    sq_op = make_sq('g0', 'c0')
+    a = Term(list_of_tensors, sq_op, 0.5)
+    assert a.ambit() == 'C1["c0,g0"] += (1.0 / 2.0) * H2["v0,v1,g0,c1"] * T2["c0,c1,v0,v1"];'
 
 
 def test_ambit_2():
-    pass
+    a = Term([make_tensor('H', 'g0, h1', 'g0, p1')], make_sq('g0, p1', 'g0, h1'))
+    ref = '// Error: diagonal indices are not supported by ambit.\n' \
+          'temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {"ghgp"});\n' \
+          'temp["g0,h1,g0,p1"] += 1.0 * H2["g0,h1,g0,p1"];\n' \
+          'C2["g0,h1,g0,p1"] += temp["g0,h1,g0,p1"];\n' \
+          'C2["g0,h1,p1,g0"] -= temp["g0,h1,g0,p1"];\n' \
+          'C2["h1,g0,g0,p1"] -= temp["g0,h1,g0,p1"];\n' \
+          'C2["h1,g0,p1,g0"] += temp["g0,h1,g0,p1"];\n'
+    assert a.ambit() == ref
 
 
 def test_ambit_3():
-    pass
+    a = Term([make_tensor('H', 'g0, h1', 'g1, p1')], make_sq('g1, p1', 'g0, h1'))
+    ref = 'temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {"ghgp"});\n' \
+          'temp["g0,h1,g1,p1"] += 1.0 * H2["g0,h1,g1,p1"];'
+    assert a.ambit(ignore_permutations=True) == ref
+
+    assert a.ambit(ignore_permutations=True, init_temp=False) == 'temp["g0,h1,g1,p1"] += 1.0 * H2["g0,h1,g1,p1"];'
+
+    assert a.ambit(init_temp=False, declared_temp=False) == 'C2["g0,h1,g1,p1"] += 1.0 * H2["g0,h1,g1,p1"];\n'
 
 
 def test_almost_eq():
@@ -127,6 +150,14 @@ def test_gt():
 
 
 def test_ge():
+    pass
+
+
+def test_is_excitation():
+    pass
+
+
+def test_void():
     pass
 
 

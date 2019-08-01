@@ -70,6 +70,14 @@ def test_latex_1():
 
 
 def test_latex_2():
+    a = Term([make_tensor('H', 'g0, h1', 'g0, p1')],
+             make_sq('g0, p1', 'g0, h1'))
+    ref = "1/4 & {\\cal P}(g_{0} / p_{1}) {\\cal P}(g_{0} / h_{1}) " \
+          "H^{ g_{0} h_{1} }_{ g_{0} p_{1} } a^{ g_{0} p_{1} }_{ g_{0} h_{1} }"
+    assert a.latex(delimiter=True) == ref
+
+
+def test_latex_3():
     list_of_tensors = [make_tensor('H', 'v3, v4', 'v0, c3'),
                        make_tensor('T', 'c0, c1', 'v1, v3'),
                        make_tensor('T', 'c2, c3', 'v2, v4')]
@@ -87,7 +95,39 @@ def test_latex_2():
     ref = "-1 H^{ v_{3} v_{4} }_{ v_{0} c_{3} } T^{ c_{0} c_{1} }_{ v_{1} v_{3} } " \
           "T^{ c_{2} c_{3} }_{ v_{2} v_{4} } a^{ v_{0} v_{1} v_{2} }_{ c_{0} c_{1} c_{2} }"
 
-    assert a.latex(permute_format=False) == ref
+    assert a.latex(permute_format=False) == str(a) == ref
+
+
+def test_ambit_1():
+    pass
+
+
+def test_ambit_2():
+    pass
+
+
+def test_ambit_3():
+    pass
+
+
+def test_almost_eq():
+    pass
+
+
+def test_lt():
+    pass
+
+
+def test_le():
+    pass
+
+
+def test_gt():
+    pass
+
+
+def test_ge():
+    pass
 
 
 def test_perm_part():

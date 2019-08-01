@@ -72,7 +72,8 @@ class Term:
 
         self._list_of_tensors = sorted(list_of_tensors) if need_to_sort else list_of_tensors
         self._indices_set = set(connection.keys())
-        self._sorted = need_to_sort
+        self._diagonal_indices = diagonal_indices
+        self._sorted = need_to_sort  # TODO: see if this can be deleted
 
         # determine the next available index for each space
         next_index_number = {i: 0 for i in space_priority}
@@ -121,6 +122,10 @@ class Term:
         return self._indices_set
 
     @property
+    def diagonal_indices(self):
+        return self._diagonal_indices
+
+    @property
     def sorted(self):
         return self._sorted
 
@@ -134,6 +139,7 @@ class Term:
     def next_index_number(self):
         return self._next_index_number
 
+    # TODO: make terms with same permutations close together
     @property
     def comparison_tuple(self):
         return self.sq_op, self.n_tensors, self.list_of_tensors, abs(self.coeff), self.coeff
@@ -235,6 +241,7 @@ class Term:
             out = "$" + out + "$"
         return out
 
+    # TODO: need to disable for diagonal indices because ambit cannot handle repeated indices
     def ambit(self, name='C', ignore_permutations=False, init_temp=True, declared_temp=True):
         """
         Translate to ambit form, forced to add permutations if found.

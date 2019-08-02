@@ -400,6 +400,45 @@ class Term:
         lower_indices = sq_op.indices_type([replacement[i] for i in sq_op.ann_ops])
         return SecondQuantizedOperator(upper_indices, lower_indices)
 
+    def simplify(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
+        """
+        Simplify the term in place by downgrading cumulant indices and removing Kronecker deltas.
+        :param simplify_core_cumulant: change a cumulant labeled by core indices to a Kronecker delta
+        :param remove_active_amplitudes: remove terms when its contains all-active amplitudes
+        """
+        replacement = {i: i for i in self.indices_set}
+
+        # downgrade cumulant indices
+        replacement_cumulant = self._downgrade_cumulant_indices(simplify_core_cumulant)
+        replacement.update(replacement_cumulant)
+        if abs(self.coeff) < 1.0e-12:
+            return
+
+        # remove Kronecker deltas
+        list_of_tensors, replacement_delta = self._remove_kronecker_delta()
+        replacement.update(replacement_delta)
+        if abs(self.coeff) < 1.0e-12:
+            return
+
+        # remove all-active amplitudes
+        final_tensors = []
+        if remove_active_amplitudes:
+            for tensor in list_of_tensors:
+                if isinstance(tensor, ClusterAmplitude):
+                    space = set([replacement[i].space for i in tensor.upper_indices]).union(
+                        set([replacement[i].space for i in tensor.lower_indices]))
+                    if len(space) == 1 and (next(iter(space)) in ('a', 'A')):
+                        self.void_self()
+                        return
+                final_tensors.append(tensor)
+        else:
+            final_tensors = list_of_tensors
+
+        # relabel tensors using replacement map
+        self._list_of_tensors = sorted(self._replace_tensors_indices(final_tensors, replacement))
+        self._sorted = True
+        self._indices_set = set(replacement.values())
+
     def _remove_kronecker_delta(self):
         """
         Remove Kronecker delta of this term in place.
@@ -520,54 +559,15 @@ class Term:
                 return False
         return True
 
-    def _remove_active_only_amplitudes(self):
-        """
-        Void the term if contains any amplitudes labeled by active indices.
-        """
-        for tensor in self.list_of_tensors:
-            if isinstance(tensor, ClusterAmplitude):
-                if tensor.is_all_active():
-                    self.void_self()
-                    return
-
-    def simplify(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
-        """
-        Simplify the term in place by downgrading cumulant indices and removing Kronecker deltas.
-        :param simplify_core_cumulant: change a cumulant labeled by core indices to a Kronecker delta
-        :param remove_active_amplitudes: remove terms when its contains all-active amplitudes
-        """
-        replacement = {i: i for i in self.indices_set}
-
-        # downgrade cumulant indices
-        replacement_cumulant = self._downgrade_cumulant_indices(simplify_core_cumulant)
-        replacement.update(replacement_cumulant)
-        if abs(self.coeff) < 1.0e-12:
-            return
-
-        # remove Kronecker deltas
-        list_of_tensors, replacement_delta = self._remove_kronecker_delta()
-        replacement.update(replacement_delta)
-        if abs(self.coeff) < 1.0e-12:
-            return
-
-        # remove all-active amplitudes
-        final_tensors = []
-        if remove_active_amplitudes:
-            for tensor in list_of_tensors:
-                if isinstance(tensor, ClusterAmplitude):
-                    space = set([replacement[i].space for i in tensor.upper_indices]).union(
-                        set([replacement[i].space for i in tensor.lower_indices]))
-                    if len(space) == 1 and (next(iter(space)) in ('a', 'A')):
-                        self.void_self()
-                        return
-                final_tensors.append(tensor)
-        else:
-            final_tensors = list_of_tensors
-
-        # relabel tensors using replacement map
-        self._list_of_tensors = sorted(self._replace_tensors_indices(final_tensors, replacement))
-        self._sorted = True
-        self._indices_set = set(replacement.values())
+    # def _remove_active_only_amplitudes(self):
+    #     """
+    #     Void the term if contains any amplitudes labeled by active indices.
+    #     """
+    #     for tensor in self.list_of_tensors:
+    #         if isinstance(tensor, ClusterAmplitude):
+    #             if tensor.is_all_active():
+    #                 self.void_self()
+    #                 return
 
     def build_adjacency_matrix(self, ignore_cumulant=True):
         """

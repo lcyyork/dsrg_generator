@@ -7,7 +7,7 @@ from sympy.combinatorics.tensor_can import canonicalize
 from sympy.combinatorics import Permutation
 
 from typing import List
-from src.mo_space import space_priority, space_relation, space_priority_so, space_relation_so, mo_space
+from src.mo_space import space_priority, space_relation, space_priority_so, space_relation_so, find_space_label
 from src.Index import Index
 from src.Indices import Indices, IndicesSpinOrbital, IndicesAntisymmetric
 from src.Tensor import Tensor, Cumulant, HamiltonianTensor, ClusterAmplitude, Kronecker, HoleDensity
@@ -190,9 +190,19 @@ class Term:
         """ Return an empty Term object. """
         return Term([], self.sq_op.void(), 0.0)
 
+    def void_self(self):
+        """
+        Make current Term an empty Term.
+        """
+        self._coeff = 0.0
+        self._sq_op = self.sq_op.void()
+        self._list_of_tensors = []
+        self._indices_set = set()
+        self._diagonal_indices = set()
+
     def is_void(self):
         """ Return True if this Term is zero. """
-        return self.coeff == 0
+        return abs(self.coeff) < 1.0e-15
 
     @staticmethod
     def format_coeff(value, form=None):
@@ -347,15 +357,6 @@ class Term:
 
             return out
 
-    def void_self(self):
-        """
-        Make current Term an empty Term.
-        """
-        self._coeff = 0.0
-        self._sq_op = self.sq_op.void()
-        self._indices_set = set()
-        self._list_of_tensors = []
-
     @staticmethod
     def _generate_next_index(space, next_index, add=True):
         """
@@ -409,16 +410,19 @@ class Term:
         replacement = {i: i for i in self.indices_set}
 
         # downgrade cumulant indices
-        replacement_cumulant = self._downgrade_cumulant_indices(simplify_core_cumulant)
+        replacement_cumulant, replacement_diagonal_cu = self._downgrade_cumulant_indices(simplify_core_cumulant)
         replacement.update(replacement_cumulant)
-        if abs(self.coeff) < 1.0e-12:
-            return
 
         # remove Kronecker deltas
-        list_of_tensors, replacement_delta = self._remove_kronecker_delta()
+        list_of_tensors, replacement_delta, replacement_diagonal_delta = self._remove_kronecker_delta()
         replacement.update(replacement_delta)
-        if abs(self.coeff) < 1.0e-12:
-            return
+
+        # consider diagonal indices
+        for index in self.diagonal_indices:
+            overlap = set.intersection(*(space_relation[i.space]
+                                         for i in replacement_diagonal_cu[index] | replacement_diagonal_delta[index]))
+            replacement[index] = self._generate_next_index(find_space_label(overlap), self.next_index_number)
+        self._sq_op = self._replace_sq_op_indices(self.sq_op, replacement)
 
         # remove all-active amplitudes
         final_tensors = []
@@ -435,129 +439,102 @@ class Term:
             final_tensors = list_of_tensors
 
         # relabel tensors using replacement map
-        self._list_of_tensors = sorted(self._replace_tensors_indices(final_tensors, replacement))
-        self._sorted = True
+        self._list_of_tensors = self._replace_tensors_indices(final_tensors, replacement)
         self._indices_set = set(replacement.values())
-
-    def _remove_kronecker_delta(self):
-        """
-        Remove Kronecker delta of this term in place.
-        :return: a tuple of (non-delta tensors, a replacement map {index: downgraded index})
-        """
-        list_of_tensors = []
-
-        # replacement = {i: i for i in self.indices_set}
-        replacement = {}
-        next_active_a, next_active_b = self.next_index_number['a'], self.next_index_number['A']
-
-        for tensor in self.list_of_tensors:
-            if isinstance(tensor, Kronecker):
-                if tensor.downgrade_indices() == '':
-                    self.void_self()
-                    return
-                else:
-                    high, low = sorted([tensor.upper_indices[0], tensor.lower_indices[0]])
-                    if (high.space, low.space) == ('p', 'h'):
-                        index_name = f"a{next_active_a}"
-                        replacement[high], replacement[low] = Index(index_name), Index(index_name)
-                        next_active_a += 1
-                    elif (high.space, low.space) == ('P', 'H'):
-                        index_name = f"A{next_active_b}"
-                        replacement[high], replacement[low] = Index(index_name), Index(index_name)
-                        next_active_b += 1
-                    else:
-                        replacement[high] = low
-            else:
-                list_of_tensors.append(tensor)
-
-        # # relabel tensors using replacement map
-        # self._list_of_tensors = sorted(self._replace_tensors_indices(list_of_tensors, replacement))
-        # self._sorted = True
-        # self._indices_set = set(replacement.values())
-        # self._n_tensors = len(self._list_of_tensors)
-
-        # sanity changes to next available index for active labels
-        self._next_index_number['a'] = next_active_a
-        self._next_index_number['A'] = next_active_b
-
-        return list_of_tensors, replacement
+        self._diagonal_indices = set(replacement[i] for i in self.diagonal_indices)
 
     def _downgrade_cumulant_indices(self, simplify_core_cumulant=True):
         """
         Downgrade cumulant indices: 1cu -> hole only, 2cu -> active only.
         :param simplify_core_cumulant: change a cumulant labeled by core indices to a Kronecker delta
-        :return: a replacement map {index: downgraded index}
+        :return: a replacement map {index: downgraded index}, diagonal indices that have not encountered
         """
         replacement = {}
         next_index = {**self.next_index_number}
-        repeated_indices = set(self.diagonal_indices)
+        replacement_diagonal = {i: set() for i in self.diagonal_indices}
 
         for i_tensor, tensor in enumerate(self.list_of_tensors):
             if isinstance(tensor, Cumulant):
                 # higher-order cumulant can only have active indices
                 if tensor.n_body != 1:
-                    self._turn_indices_active(tensor.upper_indices, replacement, next_index, repeated_indices)
-                    self._turn_indices_active(tensor.lower_indices, replacement, next_index, repeated_indices)
-                    # for i in tensor.upper_indices:
-                    #     replacement[i] = self._generate_next_index('A' if i.is_beta() else 'a', next_index)
-                    # for i in tensor.lower_indices:
-                    #     replacement[i] = self._generate_next_index('A' if i.is_beta() else 'a', next_index)
+                    for i in tensor.upper_indices:
+                        replacement[i] = self._generate_next_index('A' if i.is_beta() else 'a', next_index)
+                        Term._add_replacement_diagonal(i, replacement[i], self.diagonal_indices, replacement_diagonal)
+
+                    for i in tensor.lower_indices:
+                        replacement[i] = self._generate_next_index('A' if i.is_beta() else 'a', next_index)
+                        Term._add_replacement_diagonal(i, replacement[i], self.diagonal_indices, replacement_diagonal)
                 else:
                     u_index, l_index = tensor.upper_indices[0], tensor.lower_indices[0]
                     space_label = tensor.downgrade_indices()
 
-                    do_upper = self._do_replace_index(u_index, repeated_indices)
-                    do_lower = self._do_replace_index(l_index, repeated_indices)
-
-                    if space_label in ('c', 'C'):
-                        if simplify_core_cumulant:
-                            self._list_of_tensors[i_tensor] = Kronecker(tensor.upper_indices, tensor.lower_indices)
-                        else:
-                            if do_upper:
-                                replacement[u_index] = self._generate_next_index(space_label, next_index)
-                            if do_lower:
-                                replacement[l_index] = self._generate_next_index(space_label, next_index)
-                    elif space_label == '':
+                    if space_label == '':
                         msg = f"Invalid 1-cumulant ({tensor}) in {self}.\n" \
                               f"Likely a bug in the contraction function in sqop_contraction.py."
                         raise ValueError(msg)
+
+                    if space_label.lower() == 'c' and simplify_core_cumulant:
+                        self._list_of_tensors[i_tensor] = Kronecker(tensor.upper_indices, tensor.lower_indices)
                     else:
-                        if do_upper:
-                            replacement[u_index] = self._generate_next_index(space_label, next_index)
-                        if do_lower:
-                            replacement[l_index] = self._generate_next_index(space_label, next_index)
+                        replacement[u_index] = self._generate_next_index(space_label, next_index)
+                        Term._add_replacement_diagonal(u_index, replacement[u_index],
+                                                       self.diagonal_indices, replacement_diagonal)
+
+                        replacement[l_index] = self._generate_next_index(space_label, next_index)
+                        Term._add_replacement_diagonal(l_index, replacement[l_index],
+                                                       self.diagonal_indices, replacement_diagonal)
 
         # set next available index number to the modified one
         self._next_index_number.update(next_index)
 
-        return replacement
+        return replacement, replacement_diagonal
 
-    def _turn_indices_active(self, indices, replacement, next_index, repeated_indices):
-        """
-        Helper function for _downgrade_cumulant_indices to make Indices all active.
-        :param indices: a Indices object
-        :param replacement: index replacement map
-        :param next_index: a map for next available label number for MO spaces, e.g., {'g': 2, 'p': 0, 'h': 1, ...}
-        :param repeated_indices: a set of diagonal indices that are not yet encountered
-        """
-        for i in indices:
-            if not self._do_replace_index(i, repeated_indices):
-                continue
-            replacement[i] = self._generate_next_index('A' if i.is_beta() else 'a', next_index)
+    @staticmethod
+    def _add_replacement_diagonal(i, i_new, diagonal_indices, replacement_diagonal):
+        if i in diagonal_indices:
+            replacement_diagonal[i].add(i_new)
 
-    def _do_replace_index(self, i, repeated_indices):
+    def _remove_kronecker_delta(self):
         """
-        Helper function for _downgrade_cumulant_indices to test if consider index i for replacement.
-        :param i: the index being considered
-        :param repeated_indices: a set of diagonal indices that are not yet encountered
-        :return: True if we should put index i in the replacement map
+        Remove Kronecker delta of this term in place.
+        :return: non-delta tensors, a replacement map {index: downgraded index}, a replacement map for diagonal indices
         """
-        if i in self.diagonal_indices:
-            if i in repeated_indices:
-                repeated_indices.remove(i)
+        list_of_tensors = []
+
+        replacement = {}
+        next_active = {'a': self.next_index_number['a'], 'A': self.next_index_number['A']}
+        replacement_diagonal = {i: set() for i in self.diagonal_indices}
+
+        for tensor in self.list_of_tensors:
+            if isinstance(tensor, Kronecker):
+                if tensor.downgrade_indices() == '':
+                    msg = f"Invalid Kronecker delta ({tensor}) in {self}.\n" \
+                          f"Likely a bug in the contraction function or downgrade cumulant indices."
+                    raise ValueError(msg)
+                else:
+                    high, low = sorted([tensor.upper_indices[0], tensor.lower_indices[0]])
+                    if (high.space.lower(), low.space.lower()) == ('p', 'h'):
+                        space = 'a' if high.space.islower() else 'A'
+                        index_name = f"{space}{next_active[space]}"
+
+                        replacement[high], replacement[low] = Index(index_name), Index(index_name)
+                        next_active[space] += 1
+
+                        Term._add_replacement_diagonal(high, replacement[high],
+                                                       self.diagonal_indices, replacement_diagonal)
+                        Term._add_replacement_diagonal(low, replacement[low],
+                                                       self.diagonal_indices, replacement_diagonal)
+                    else:
+                        replacement[high] = low
+                        Term._add_replacement_diagonal(high, low, self.diagonal_indices, replacement_diagonal)
             else:
-                return False
-        return True
+                list_of_tensors.append(tensor)
+
+        # sanity changes to next available index for active labels
+        self._next_index_number['a'] = next_active['a']
+        self._next_index_number['A'] = next_active['A']
+
+        return list_of_tensors, replacement, replacement_diagonal
 
     # def _remove_active_only_amplitudes(self):
     #     """
@@ -569,105 +546,105 @@ class Term:
     #                 self.void_self()
     #                 return
 
-    def build_adjacency_matrix(self, ignore_cumulant=True):
-        """
-        Build the adjacency matrix (upper triangle) of the current Term.
-        For example, Term = 1.0 * H * T1 * T2 * L1 * L2 * L3 * SqOp
-                   H         T1          T2          L1          L2          L3          SqOp
-        -------------------------------------------------------------------------------------
-        H       None  SC(H, T1)   SC(H, T2)   SC(H, L1)   SC(H, L2)   SC(H, L3)   SC(H, SqOp)
-        T1      None       None  SC(T1, T2)  SC(T1, L1)  SC(T1, L2)  SC(T1, L3)  SC(T1, SqOp)
-        T2      None       None        None  SC(T2, L1)  SC(T2, L2)  SC(T2, L3)  SC(T2, SqOp)
-        L1      None       None        None        None  SC(L1, L2)  SC(L1, L3)          None
-        L2      None       None        None        None        None  SC(L2, L3)          None
-        L3      None       None        None        None        None        None          None
-        SqOp    None       None        None        None        None        None          None
-
-        :param ignore_cumulant: ignore building elements between cumulants, hole densities, or Kronecker deltas
-        :return: the adjacency matrix specified by SpaceCounter
-        """
-        adjacency_matrix: List[List[SpaceCounter]] = [[None for _ in range(self.n_tensors + 1)]
-                                                      for __ in range(self.n_tensors + 1)]
-
-        for i1, tensor1 in enumerate(self.list_of_tensors):
-            is_cumulant1 = True if isinstance(tensor1, (Cumulant, HoleDensity, Kronecker)) else False
-            for i2, tensor2 in enumerate(self.list_of_tensors[i1 + 1:] + [self.sq_op], i1 + 1):
-                if is_cumulant1:
-                    if ignore_cumulant and isinstance(tensor2, (Cumulant, HoleDensity, Kronecker)):
-                        continue
-                    if isinstance(tensor2, SecondQuantizedOperator):
-                        continue
-                adjacency_matrix[i1][i2] = SpaceCounter(tensor1, tensor2)
-
-        return adjacency_matrix
-
-    def similar(self, other):
-        self._is_valid_operand(other)
-        return self.build_adjacency_matrix() == other.build_adjacency_matrix()
-
-    def almost_similar(self, other):
-        self._is_valid_operand(other)
-        return self.order_tensors() == other.order_tensors()
-
-    def order_tensors(self, simplified=True):
-        """
-        Order tensors in place (after simplified) according to adjacency matrix.
-        :param simplified: True if this Term is simplified already
-        :return: the adjacency matrix of the ordered list of tensors
-        """
-        if not simplified:
-            self.simplify()
-
-        n_tensors = self.n_tensors
-        ordered_tensors: List[Tensor] = [None for _ in range(n_tensors)]
-
-        # build adjacency matrix of the current term
-        adj_mat = self.build_adjacency_matrix()
-        adj_mat_copy = deepcopy(adj_mat)
-
-        # figure out possible equivalent tensors with same name, n_upper, n_lower
-        equivalent_tensors = defaultdict(list)
-        n_non_cu = n_tensors
-        for i, tensor in enumerate(self.list_of_tensors):
-            equivalent_tensors[f"{tensor.name}_{tensor.n_upper}_{tensor.n_lower}"].append(i)
-            if n_non_cu == n_tensors and isinstance(tensor, Cumulant):
-                n_non_cu = i
-
-        # make sure we fix ordering of amplitudes first, then cumulants
-        for i_tensors in sorted(equivalent_tensors.values(), key=lambda i: (self.list_of_tensors[i[0]].priority,
-                                                                            self.list_of_tensors[i[0]].n_upper,
-                                                                            self.list_of_tensors[i[0]].n_lower)):
-            if len(i_tensors) == 1:
-                ordered_tensors[i_tensors[0]] = self.list_of_tensors[i_tensors[0]]
-            else:
-                if 0 in i_tensors:
-                    raise NotImplementedError("Not considered this situation. Must have only one Hamiltonian.")
-                    # max_i = max(i_tensors)
-                    # ordered = sorted(i_tensors, key=lambda i: [adj_mat[i][n_tensors]] + sorted(adj_mat[i][max_i:-1]))
-                    # for i, j in zip(i_tensor, ordered):
-                    #     ordered_tensors[i] = self.list_of_tensors[j]
-                    #     adj_mat[i] = adj_mat_copy[j]
-                    # adj_mat_copy = deepcopy(adj_mat)
-
-                if isinstance(self.list_of_tensors[i_tensors[0]], ClusterAmplitude):
-                    ordered = sorted(i_tensors, key=lambda i: [adj_mat[i][n_tensors],
-                                                               adj_mat[0][i]] + sorted(adj_mat[i][n_non_cu:]))
-                    for i, j in zip(i_tensors, ordered):
-                        ordered_tensors[i] = self.list_of_tensors[j]
-                        adj_mat[i] = adj_mat_copy[j]
-                    adj_mat_copy = deepcopy(adj_mat)
-
-                if isinstance(self.list_of_tensors[i_tensors[0]], Cumulant):
-                    ordered = sorted(i_tensors, key=lambda j: [adj_mat[i][j] for i in range(n_non_cu)])
-                    for i, j in zip(i_tensors, ordered):
-                        ordered_tensors[i] = self.list_of_tensors[j]
-                        for k in range(n_non_cu):
-                            adj_mat[k][i] = adj_mat_copy[k][j]
-
-        self._list_of_tensors = ordered_tensors
-        self._sorted = False
-
-        return adj_mat
+    # def build_adjacency_matrix(self, ignore_cumulant=True):
+    #     """
+    #     Build the adjacency matrix (upper triangle) of the current Term.
+    #     For example, Term = 1.0 * H * T1 * T2 * L1 * L2 * L3 * SqOp
+    #                H         T1          T2          L1          L2          L3          SqOp
+    #     -------------------------------------------------------------------------------------
+    #     H       None  SC(H, T1)   SC(H, T2)   SC(H, L1)   SC(H, L2)   SC(H, L3)   SC(H, SqOp)
+    #     T1      None       None  SC(T1, T2)  SC(T1, L1)  SC(T1, L2)  SC(T1, L3)  SC(T1, SqOp)
+    #     T2      None       None        None  SC(T2, L1)  SC(T2, L2)  SC(T2, L3)  SC(T2, SqOp)
+    #     L1      None       None        None        None  SC(L1, L2)  SC(L1, L3)          None
+    #     L2      None       None        None        None        None  SC(L2, L3)          None
+    #     L3      None       None        None        None        None        None          None
+    #     SqOp    None       None        None        None        None        None          None
+    #
+    #     :param ignore_cumulant: ignore building elements between cumulants, hole densities, or Kronecker deltas
+    #     :return: the adjacency matrix specified by SpaceCounter
+    #     """
+    #     adjacency_matrix: List[List[SpaceCounter]] = [[None for _ in range(self.n_tensors + 1)]
+    #                                                   for __ in range(self.n_tensors + 1)]
+    #
+    #     for i1, tensor1 in enumerate(self.list_of_tensors):
+    #         is_cumulant1 = True if isinstance(tensor1, (Cumulant, HoleDensity, Kronecker)) else False
+    #         for i2, tensor2 in enumerate(self.list_of_tensors[i1 + 1:] + [self.sq_op], i1 + 1):
+    #             if is_cumulant1:
+    #                 if ignore_cumulant and isinstance(tensor2, (Cumulant, HoleDensity, Kronecker)):
+    #                     continue
+    #                 if isinstance(tensor2, SecondQuantizedOperator):
+    #                     continue
+    #             adjacency_matrix[i1][i2] = SpaceCounter(tensor1, tensor2)
+    #
+    #     return adjacency_matrix
+    #
+    # def similar(self, other):
+    #     self._is_valid_operand(other)
+    #     return self.build_adjacency_matrix() == other.build_adjacency_matrix()
+    #
+    # def almost_similar(self, other):
+    #     self._is_valid_operand(other)
+    #     return self.order_tensors() == other.order_tensors()
+    #
+    # def order_tensors(self, simplified=True):
+    #     """
+    #     Order tensors in place (after simplified) according to adjacency matrix.
+    #     :param simplified: True if this Term is simplified already
+    #     :return: the adjacency matrix of the ordered list of tensors
+    #     """
+    #     if not simplified:
+    #         self.simplify()
+    #
+    #     n_tensors = self.n_tensors
+    #     ordered_tensors: List[Tensor] = [None for _ in range(n_tensors)]
+    #
+    #     # build adjacency matrix of the current term
+    #     adj_mat = self.build_adjacency_matrix()
+    #     adj_mat_copy = deepcopy(adj_mat)
+    #
+    #     # figure out possible equivalent tensors with same name, n_upper, n_lower
+    #     equivalent_tensors = defaultdict(list)
+    #     n_non_cu = n_tensors
+    #     for i, tensor in enumerate(self.list_of_tensors):
+    #         equivalent_tensors[f"{tensor.name}_{tensor.n_upper}_{tensor.n_lower}"].append(i)
+    #         if n_non_cu == n_tensors and isinstance(tensor, Cumulant):
+    #             n_non_cu = i
+    #
+    #     # make sure we fix ordering of amplitudes first, then cumulants
+    #     for i_tensors in sorted(equivalent_tensors.values(), key=lambda i: (self.list_of_tensors[i[0]].priority,
+    #                                                                         self.list_of_tensors[i[0]].n_upper,
+    #                                                                         self.list_of_tensors[i[0]].n_lower)):
+    #         if len(i_tensors) == 1:
+    #             ordered_tensors[i_tensors[0]] = self.list_of_tensors[i_tensors[0]]
+    #         else:
+    #             if 0 in i_tensors:
+    #                 raise NotImplementedError("Not considered this situation. Must have only one Hamiltonian.")
+    #                 # max_i = max(i_tensors)
+    #                 # ordered = sorted(i_tensors, key=lambda i: [adj_mat[i][n_tensors]] + sorted(adj_mat[i][max_i:-1]))
+    #                 # for i, j in zip(i_tensor, ordered):
+    #                 #     ordered_tensors[i] = self.list_of_tensors[j]
+    #                 #     adj_mat[i] = adj_mat_copy[j]
+    #                 # adj_mat_copy = deepcopy(adj_mat)
+    #
+    #             if isinstance(self.list_of_tensors[i_tensors[0]], ClusterAmplitude):
+    #                 ordered = sorted(i_tensors, key=lambda i: [adj_mat[i][n_tensors],
+    #                                                            adj_mat[0][i]] + sorted(adj_mat[i][n_non_cu:]))
+    #                 for i, j in zip(i_tensors, ordered):
+    #                     ordered_tensors[i] = self.list_of_tensors[j]
+    #                     adj_mat[i] = adj_mat_copy[j]
+    #                 adj_mat_copy = deepcopy(adj_mat)
+    #
+    #             if isinstance(self.list_of_tensors[i_tensors[0]], Cumulant):
+    #                 ordered = sorted(i_tensors, key=lambda j: [adj_mat[i][j] for i in range(n_non_cu)])
+    #                 for i, j in zip(i_tensors, ordered):
+    #                     ordered_tensors[i] = self.list_of_tensors[j]
+    #                     for k in range(n_non_cu):
+    #                         adj_mat[k][i] = adj_mat_copy[k][j]
+    #
+    #     self._list_of_tensors = ordered_tensors
+    #     self._sorted = False
+    #
+    #     return adj_mat
 
     def _minimal_indices(self):
         """
@@ -721,51 +698,51 @@ class Term:
 
         return Term(list_of_tensors, sq_op, self.coeff * sign)
 
-    def canonicalize(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
-        """
-        Bring the current term to canonical form, which is defined by a sequence of ordering:
-        1. order tensor by connection to Hamiltonian
-        2. relabel indices
-        :param simplify_core_cumulant: change a cumulant labeled by core indices to a Kronecker delta
-        :param remove_active_amplitudes: remove terms when its contains all-active amplitudes
-        :return: the "canonical" form of this term
-        """
-        # remove Kronecker delta, remove active amplitudes, simplify cumulant indices
-        self.simplify(simplify_core_cumulant, remove_active_amplitudes)
-        if self.coeff == 0:
-            return self
-
-        # order tensors according to adjacency matrix
-        self.order_tensors(simplified=True)
-
-        # create replacement map according to connections
-        replacement = {}
-        next_index = {i: 0 for i in space_priority}
-        n_non_cu = sum([not isinstance(i, Cumulant) for i in self.list_of_tensors])
-
-        open_indices = self.sq_op.cre_ops.indices_set ^ self.sq_op.ann_ops.indices_set
-        if not self.sq_op.is_empty():
-            for tensor in self.list_of_tensors[:n_non_cu]:
-                for i in [j for j in tensor.upper_indices if j in open_indices]:
-                    replacement[i] = self._generate_next_index(i.space, next_index)
-                for i in [j for j in tensor.lower_indices if j in open_indices]:
-                    replacement[i] = self._generate_next_index(i.space, next_index)
-
-        for i, tensor1 in enumerate(self.list_of_tensors[:n_non_cu]):
-            for tensor2 in self.list_of_tensors[i + 1:]:
-                for k in sorted(tensor1.upper_indices.indices_set & tensor2.lower_indices.indices_set):
-                    replacement[k] = self._generate_next_index(k.space, next_index)
-                for k in sorted(tensor1.lower_indices.indices_set & tensor2.upper_indices.indices_set):
-                    replacement[k] = self._generate_next_index(k.space, next_index)
-
-        sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
-
-        self._list_of_tensors = list_of_tensors
-        self._sq_op = sq_op
-        self.coeff *= sign
-
-        # relabel indices
-        return self.canonicalize_simple()
+    # def canonicalize(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
+    #     """
+    #     Bring the current term to canonical form, which is defined by a sequence of ordering:
+    #     1. order tensor by connection to Hamiltonian
+    #     2. relabel indices
+    #     :param simplify_core_cumulant: change a cumulant labeled by core indices to a Kronecker delta
+    #     :param remove_active_amplitudes: remove terms when its contains all-active amplitudes
+    #     :return: the "canonical" form of this term
+    #     """
+    #     # remove Kronecker delta, remove active amplitudes, simplify cumulant indices
+    #     self.simplify(simplify_core_cumulant, remove_active_amplitudes)
+    #     if self.coeff == 0:
+    #         return self
+    #
+    #     # order tensors according to adjacency matrix
+    #     self.order_tensors(simplified=True)
+    #
+    #     # create replacement map according to connections
+    #     replacement = {}
+    #     next_index = {i: 0 for i in space_priority}
+    #     n_non_cu = sum([not isinstance(i, Cumulant) for i in self.list_of_tensors])
+    #
+    #     open_indices = self.sq_op.cre_ops.indices_set ^ self.sq_op.ann_ops.indices_set
+    #     if not self.sq_op.is_empty():
+    #         for tensor in self.list_of_tensors[:n_non_cu]:
+    #             for i in [j for j in tensor.upper_indices if j in open_indices]:
+    #                 replacement[i] = self._generate_next_index(i.space, next_index)
+    #             for i in [j for j in tensor.lower_indices if j in open_indices]:
+    #                 replacement[i] = self._generate_next_index(i.space, next_index)
+    #
+    #     for i, tensor1 in enumerate(self.list_of_tensors[:n_non_cu]):
+    #         for tensor2 in self.list_of_tensors[i + 1:]:
+    #             for k in sorted(tensor1.upper_indices.indices_set & tensor2.lower_indices.indices_set):
+    #                 replacement[k] = self._generate_next_index(k.space, next_index)
+    #             for k in sorted(tensor1.lower_indices.indices_set & tensor2.upper_indices.indices_set):
+    #                 replacement[k] = self._generate_next_index(k.space, next_index)
+    #
+    #     sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
+    #
+    #     self._list_of_tensors = list_of_tensors
+    #     self._sq_op = sq_op
+    #     self.coeff *= sign
+    #
+    #     # relabel indices
+    #     return self.canonicalize_simple()
 
     def canonicalize_sympy(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
         """

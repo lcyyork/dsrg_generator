@@ -205,6 +205,36 @@ def test_perm_part():
     assert ann_part == [[Index('g0')], [Index('h1')]]
 
 
+def test_simplify():
+    list_of_tensors = [make_tensor('H', "g0", "g0"),
+                       make_tensor('t', "h0", "p0"), make_tensor('t', "p1", "h1"),
+                       make_tensor('L', 'h0', 'g0'), make_tensor('L', 'g0, p1', 'p0, h1')]
+    a = Term(list_of_tensors, SecondQuantizedOperator.make_empty(), -1)
+    a.simplify()
+    assert a.is_void()
+
+    list_of_tensors = [make_tensor('H', "g0", "g0"), make_tensor('t', "h0", "p0"), make_tensor('t', "p1", "h1"),
+                       make_tensor('L', 'g0', 'h1'), make_tensor('L', 'h0', 'g0'), make_tensor('K', 'p0', 'p1')]
+    a = Term(list_of_tensors, SecondQuantizedOperator.make_empty())
+    a.simplify()
+    assert a.list_of_tensors == [make_tensor('H', 'h6', 'h6'),
+                                 make_tensor('t', 'p1', 'h3'), make_tensor('t', 'h4', 'p1'),
+                                 make_tensor('L', 'h6', 'h3'), make_tensor('L', 'h4', 'h6')]
+    assert a.sq_op == SecondQuantizedOperator.make_empty()
+    assert a.indices_set == {Index(i) for i in ['h6', 'p1', 'h3', 'h4']}
+    assert a.diagonal_indices == {Index('h6')}
+
+    list_of_tensors = [make_tensor('H', "g0", "g0"), make_tensor('t', "h0", "p0"), make_tensor('t', "p1", "c1"),
+                       make_tensor('L', 'g0', 'c1'), make_tensor('K', 'p0', 'p1')]
+    a = Term(list_of_tensors, SecondQuantizedOperator('h0', 'g0'))
+    a.simplify()
+    assert a.list_of_tensors == [make_tensor('H', "c2", "c2"),
+                                 make_tensor('t', "p1", "c1"), make_tensor('t', "h0", "p1")]
+    assert a.sq_op == SecondQuantizedOperator('h0', 'c2')
+    assert a.indices_set == {Index(i) for i in ['c2', 'p1', 'c1', 'h0']}
+    assert a.diagonal_indices == {Index('c2')}
+
+
 def test_problem():
     """
     -1/2 & H^{ v_{0} }_{ v_{1} } T^{ v_{1} }_{ c_{1} } T^{ v_{2} }_{ c_{0} } T^{ c_{0} c_{1} }_{ v_{0} v_{2} }

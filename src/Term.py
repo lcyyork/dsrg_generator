@@ -139,7 +139,6 @@ class Term:
     def next_index_number(self):
         return self._next_index_number
 
-    # TODO: make terms with same permutations close together
     @property
     def comparison_tuple(self):
         return self.sq_op, self.n_tensors, self.list_of_tensors, abs(self.coeff), self.coeff
@@ -353,7 +352,7 @@ class Term:
         Make current Term an empty Term.
         """
         self._coeff = 0.0
-        self._sq_op = self.sq_op.void_sq_op()
+        self._sq_op = self.sq_op.void()
         self._indices_set = set()
         self._list_of_tensors = []
 

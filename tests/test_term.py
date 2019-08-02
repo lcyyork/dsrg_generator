@@ -134,7 +134,11 @@ def test_ambit_3():
 
 
 def test_almost_eq():
-    pass
+    a = Term([make_tensor('H', 'g0, h1', 'g1, p1')], make_sq('g1, p1', 'g0, h1'))
+    b = Term.from_term(a, flip_sign=True)
+    assert a != b
+    assert a.almost_equal(b)
+    assert a.coeff + b.coeff == 0
 
 
 def test_lt():

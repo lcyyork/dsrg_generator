@@ -358,6 +358,13 @@ class Term:
 
     @staticmethod
     def _generate_next_index(space, next_index, add=True):
+        """
+        Generate the next available index of given space.
+        :param space: the MO space
+        :param next_index: a map of next available index for each MO space
+        :param add: change next_index if True
+        :return: the next available index of the given space
+        """
         out = Index(f"{space}{next_index[space]}")
         if add:
             next_index[space] += 1
@@ -382,15 +389,15 @@ class Term:
         return list_of_tensors
 
     @staticmethod
-    def _replace_sqop_indices(input_sqop, replacement):
+    def _replace_sq_op_indices(sq_op, replacement):
         """
         Replace indices of second quantized operator according to replacement map.
-        :param input_sqop: a SecondQuantizedOperator object
+        :param sq_op: a SecondQuantizedOperator object
         :param replacement: a replacement map for indices
         :return: a SecondQuantizedOperator object with replaced indices
         """
-        upper_indices = input_sqop.indices_type([replacement[i] for i in input_sqop.cre_ops])
-        lower_indices = input_sqop.indices_type([replacement[i] for i in input_sqop.ann_ops])
+        upper_indices = sq_op.indices_type([replacement[i] for i in sq_op.cre_ops])
+        lower_indices = sq_op.indices_type([replacement[i] for i in sq_op.ann_ops])
         return SecondQuantizedOperator(upper_indices, lower_indices)
 
     def _remove_kronecker_delta(self):
@@ -442,39 +449,76 @@ class Term:
         :param simplify_core_cumulant: change a cumulant labeled by core indices to a Kronecker delta
         :return: a replacement map {index: downgraded index}
         """
-        # replacement = {i: i for i in self.indices_set}
         replacement = {}
         next_index = {**self.next_index_number}
+        repeated_indices = set(self.diagonal_indices)
 
         for i_tensor, tensor in enumerate(self.list_of_tensors):
             if isinstance(tensor, Cumulant):
                 # higher-order cumulant can only have active indices
                 if tensor.n_body != 1:
-                    for i in tensor.upper_indices:
-                        replacement[i] = self._generate_next_index('A' if i.is_beta() else 'a', next_index)
-                    for i in tensor.lower_indices:
-                        replacement[i] = self._generate_next_index('A' if i.is_beta() else 'a', next_index)
+                    self._turn_indices_active(tensor.upper_indices, replacement, next_index, repeated_indices)
+                    self._turn_indices_active(tensor.lower_indices, replacement, next_index, repeated_indices)
+                    # for i in tensor.upper_indices:
+                    #     replacement[i] = self._generate_next_index('A' if i.is_beta() else 'a', next_index)
+                    # for i in tensor.lower_indices:
+                    #     replacement[i] = self._generate_next_index('A' if i.is_beta() else 'a', next_index)
                 else:
                     u_index, l_index = tensor.upper_indices[0], tensor.lower_indices[0]
                     space_label = tensor.downgrade_indices()
+
+                    do_upper = self._do_replace_index(u_index, repeated_indices)
+                    do_lower = self._do_replace_index(l_index, repeated_indices)
 
                     if space_label in ('c', 'C'):
                         if simplify_core_cumulant:
                             self._list_of_tensors[i_tensor] = Kronecker(tensor.upper_indices, tensor.lower_indices)
                         else:
-                            replacement[u_index] = self._generate_next_index(space_label, next_index)
-                            replacement[l_index] = self._generate_next_index(space_label, next_index)
+                            if do_upper:
+                                replacement[u_index] = self._generate_next_index(space_label, next_index)
+                            if do_lower:
+                                replacement[l_index] = self._generate_next_index(space_label, next_index)
                     elif space_label == '':
-                        self.void_self()
-                        return
+                        msg = f"Invalid 1-cumulant ({tensor}) in {self}.\n" \
+                              f"Likely a bug in the contraction function in sqop_contraction.py."
+                        raise ValueError(msg)
                     else:
-                        replacement[u_index] = self._generate_next_index(space_label, next_index)
-                        replacement[l_index] = self._generate_next_index(space_label, next_index)
+                        if do_upper:
+                            replacement[u_index] = self._generate_next_index(space_label, next_index)
+                        if do_lower:
+                            replacement[l_index] = self._generate_next_index(space_label, next_index)
 
         # set next available index number to the modified one
         self._next_index_number.update(next_index)
 
         return replacement
+
+    def _turn_indices_active(self, indices, replacement, next_index, repeated_indices):
+        """
+        Helper function for _downgrade_cumulant_indices to make Indices all active.
+        :param indices: a Indices object
+        :param replacement: index replacement map
+        :param next_index: a map for next available label number for MO spaces, e.g., {'g': 2, 'p': 0, 'h': 1, ...}
+        :param repeated_indices: a set of diagonal indices that are not yet encountered
+        """
+        for i in indices:
+            if not self._do_replace_index(i, repeated_indices):
+                continue
+            replacement[i] = self._generate_next_index('A' if i.is_beta() else 'a', next_index)
+
+    def _do_replace_index(self, i, repeated_indices):
+        """
+        Helper function for _downgrade_cumulant_indices to test if consider index i for replacement.
+        :param i: the index being considered
+        :param repeated_indices: a set of diagonal indices that are not yet encountered
+        :return: True if we should put index i in the replacement map
+        """
+        if i in self.diagonal_indices:
+            if i in repeated_indices:
+                repeated_indices.remove(i)
+            else:
+                return False
+        return True
 
     def _remove_active_only_amplitudes(self):
         """
@@ -655,7 +699,7 @@ class Term:
         """
         sign = 1
 
-        sq_op = self._replace_sqop_indices(self.sq_op, replacement)
+        sq_op = self._replace_sq_op_indices(self.sq_op, replacement)
         sq_op, _sign = sq_op.canonicalize()
         sign *= _sign
 

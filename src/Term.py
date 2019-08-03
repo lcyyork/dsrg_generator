@@ -26,13 +26,12 @@ class Term:
     An example of such tensors is the Fock matrix in the canonical orbital basis.
     """
 
-    def __init__(self, list_of_tensors, sq_op, coeff=1.0, need_to_sort=True):
+    def __init__(self, list_of_tensors, sq_op, coeff=1.0):
         """
         The Term class to store a list of tensors, a coefficient, and a SecondQuantizedOperator.
         :param list_of_tensors: a list of Tensor objects
         :param sq_op: a SecondQuantizedOperator object
         :param coeff: the coefficient of the term
-        :param need_to_sort: sort the list of tensors if True
         """
         if not isinstance(coeff, float):
             try:
@@ -80,10 +79,9 @@ class Term:
                              f"indices count: {connection}\n"
                              f"diagonal indices: {diagonal_indices}")
 
-        self._list_of_tensors = sorted(list_of_tensors) if need_to_sort else list_of_tensors
+        self._list_of_tensors = sorted(list_of_tensors)
         self._indices_set = set(connection.keys())
         self._diagonal_indices = diagonal_indices
-        self._sorted = need_to_sort  # TODO: see if this can be deleted
 
         # determine the next available index for each space
         next_index_number = {i: 0 for i in space_priority}
@@ -134,16 +132,6 @@ class Term:
     @property
     def diagonal_indices(self):
         return self._diagonal_indices
-
-    @property
-    def sorted(self):
-        return self._sorted
-
-    @sorted.setter
-    def sorted(self, value):
-        if not isinstance(value, (int, float)):
-            raise TypeError(f"Invalid value type, given '{value.__class__.__name__}', required 'Boolean'.")
-        self._sorted = value
 
     @property
     def next_index_number(self):
@@ -911,7 +899,7 @@ class Term:
 
         sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
 
-        return Term(list_of_tensors, sq_op, self.coeff * sign, False).canonicalize_sympy()
+        return Term(list_of_tensors, sq_op, self.coeff * sign).canonicalize_sympy()
 
     # TODO: check if works for diagonal indices
     def make_one_body_diagonal(self, single_ref):
@@ -946,7 +934,7 @@ class Term:
 
             sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
 
-            yield Term(list_of_tensors, sq_op, self.coeff * sign, False).canonicalize_sympy()
+            yield Term(list_of_tensors, sq_op, self.coeff * sign).canonicalize_sympy()
 
     # TODO: check if works for diagonal indices
     def make_ddca(self, max_core, max_virt, single_ref):
@@ -978,7 +966,7 @@ class Term:
 
             sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
 
-            yield Term(list_of_tensors, sq_op, self.coeff * sign, False).canonicalize_sympy()
+            yield Term(list_of_tensors, sq_op, self.coeff * sign).canonicalize_sympy()
 
     def expand_composite_indices(self, single_ref):
         """

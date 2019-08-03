@@ -16,6 +16,16 @@ from SpaceCounter import SpaceCounter
 
 
 class Term:
+    """
+    The Term class.
+
+    A term consists of three parts: a list of tensors, a second-quantized operator, and a coefficient.
+    For a fully contracted term, the second-quantized operator should be an empty SecondQuantizedOperator object.
+    The major functionality is to simplify the results from operator contractions and bring it to canonical form.
+    Note, "canonicalize" is not fully functional for a term containing tensors with diagonal indices.
+    An example of such tensors is the Fock matrix in the canonical orbital basis.
+    """
+
     def __init__(self, list_of_tensors, sq_op, coeff=1.0, need_to_sort=True):
         """
         The Term class to store a list of tensors, a coefficient, and a SecondQuantizedOperator.
@@ -419,9 +429,11 @@ class Term:
 
         # consider diagonal indices
         for index in self.diagonal_indices:
-            overlap = set.intersection(*(space_relation[i.space]
-                                         for i in replacement_diagonal_cu[index] | replacement_diagonal_delta[index]))
+            replacement_diagonal = replacement_diagonal_cu[index] | replacement_diagonal_delta[index]
+            overlap = set.intersection(*(space_relation[i.space] for i in replacement_diagonal))
             replacement[index] = self._generate_next_index(find_space_label(overlap), self.next_index_number)
+            for i in replacement_diagonal:
+                replacement[i] = replacement[index]
         self._sq_op = self._replace_sq_op_indices(self.sq_op, replacement)
 
         # remove all-active amplitudes
@@ -451,7 +463,7 @@ class Term:
         """
         replacement = {}
         next_index = {**self.next_index_number}
-        replacement_diagonal = {i: set() for i in self.diagonal_indices}
+        replacement_diagonal = {i: {i} for i in self.diagonal_indices}
 
         for i_tensor, tensor in enumerate(self.list_of_tensors):
             if isinstance(tensor, Cumulant):
@@ -503,7 +515,7 @@ class Term:
 
         replacement = {}
         next_active = {'a': self.next_index_number['a'], 'A': self.next_index_number['A']}
-        replacement_diagonal = {i: set() for i in self.diagonal_indices}
+        replacement_diagonal = {i: {i} for i in self.diagonal_indices}
 
         for tensor in self.list_of_tensors:
             if isinstance(tensor, Kronecker):
@@ -535,6 +547,145 @@ class Term:
         self._next_index_number['A'] = next_active['A']
 
         return list_of_tensors, replacement, replacement_diagonal
+
+    def canonicalize(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
+        """
+        Bring the current term to canonical form.
+        :param simplify_core_cumulant: change a cumulant labeled by core indices to a Kronecker delta
+        :param remove_active_amplitudes: remove terms when its contains all-active amplitudes
+        :return: the "canonical" form of this term
+        """
+        if len(self.diagonal_indices) != 0:
+            return self.canonicalize_simple(simplify_core_cumulant, remove_active_amplitudes)
+        else:
+            return self.canonicalize_sympy(simplify_core_cumulant, remove_active_amplitudes)
+
+    def canonicalize_simple(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
+        """
+        Relabel the term using minimal index labels and reorder indices.
+        :param simplify_core_cumulant: change a cumulant labeled by core indices to a Kronecker delta
+        :param remove_active_amplitudes: remove terms when its contains all-active amplitudes
+        :return: the relabeled term
+        """
+        # remove Kronecker delta, remove active amplitudes, simplify cumulant indices
+        self.simplify(simplify_core_cumulant, remove_active_amplitudes)
+        if self.is_void():
+            return self.void()
+
+        replacement = self._minimal_indices()
+
+        sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
+
+        return Term(list_of_tensors, sq_op, self.coeff * sign)
+
+    def canonicalize_sympy(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
+        """
+        Bring the current term to canonical form using SymPy.
+        :param simplify_core_cumulant: change a cumulant labeled by core indices to a Kronecker delta
+        :param remove_active_amplitudes: remove terms when its contains all-active amplitudes
+        :return: the "canonical" form of this term
+        """
+        # remove Kronecker delta, remove active amplitudes, simplify cumulant indices
+        self.simplify(simplify_core_cumulant, remove_active_amplitudes)
+        if self.is_void():
+            return self.void()
+
+        # use SymPy to canonicalize tensor indices
+        # both tensors and sq-operator are considered contracted (dummies)
+        minimal_indices_map = self._minimal_indices()
+
+        dummy_indices = sorted(minimal_indices_map.values())
+        dummy_group = [list(values) for k, values in groupby(dummy_indices, key=lambda x: x.space)]
+        dummy_count = [0] + list(accumulate(map(len, dummy_group)))
+        dummies = [range(2 * i, 2 * j) for i, j in zip(dummy_count[:-1], dummy_count[1:])]
+
+        # figure out permutation g, note we put sq_op as the first "tensor"
+        indices_tracker = {v: 2 * i for i, v in enumerate(dummy_indices)}
+        g = []
+        for tensor in [self.sq_op] + self.list_of_tensors:
+            for index in tensor.lower_indices + tensor.upper_indices:
+                minimal_index = minimal_indices_map[index]
+                g.append(indices_tracker[minimal_index])
+                indices_tracker[minimal_index] += 1
+
+        consider_sign = isinstance(self.list_of_tensors[0].upper_indices, IndicesAntisymmetric)
+        if consider_sign:
+            g += [len(g), len(g) + 1]
+
+        # figure out equivalent tensors and tensor/sq_op base and strong generating set
+        bsgs_list = [] if self.sq_op.n_ops == 0 else [self.sq_op.base_strong_generating_set() + (1, 0)]
+        tensor_count = [sum(1 for _ in group) for k, group in groupby(self.list_of_tensors,
+                                                                      key=lambda x: (x.name, x.n_body))]
+        shift = 0
+        for count in tensor_count:
+            base, gens = self.list_of_tensors[shift].base_strong_generating_set()
+            bsgs_list.append((base, gens, count, 0))
+            shift += count
+
+        # canonicalize indices
+        gc = canonicalize(Permutation(g), dummies, [0] * len(dummies), *bsgs_list)
+
+        # translate gc to Tensor and SecondQuantizedOperator
+        ann_ops = self.sq_op.indices_type([dummy_indices[i // 2] for i in gc[:self.sq_op.n_ann]])
+        cre_ops = self.sq_op.indices_type([dummy_indices[i // 2] for i in gc[self.sq_op.n_ann:self.sq_op.size]])
+        sq_op = SecondQuantizedOperator(cre_ops, ann_ops)
+
+        shift = self.sq_op.size
+        list_of_tensors = []
+        for tensor in self.list_of_tensors:
+            lower_indices = tensor.indices_type([dummy_indices[gc[i + shift] // 2] for i in range(tensor.n_lower)])
+            shift += tensor.n_lower
+            upper_indices = tensor.indices_type([dummy_indices[gc[i + shift] // 2] for i in range(tensor.n_upper)])
+            shift += tensor.n_upper
+
+            list_of_tensors.append(tensor.from_indices(upper_indices, lower_indices))
+
+        sign = 1
+        if consider_sign and g[-1] != gc[-1]:
+            sign = -1
+
+        return Term(list_of_tensors, sq_op, sign * self.coeff)
+
+    def _minimal_indices(self):
+        """
+        Create a replacement map using minimal index labels to relabel the current term.
+        :return: a replacement map {old index label: new index label}
+        """
+        replacement = {}
+        next_index_number = {i: 0 for i in self.next_index_number.keys()}
+        n_indices = len(self.indices_set)
+        for tensor in [self.sq_op] + self.list_of_tensors:
+            for upper in tensor.upper_indices:
+                if upper in replacement:
+                    continue
+                replacement[upper] = self._generate_next_index(upper.space, next_index_number)
+            for lower in tensor.lower_indices:
+                if lower in replacement:
+                    continue
+                replacement[lower] = self._generate_next_index(lower.space, next_index_number)
+            if len(replacement.keys()) == n_indices:
+                break
+
+        return replacement
+
+    def _relabel_indices(self, replacement):
+        """
+        Relabel indices of this term according to the replacement map and resort the indices ordering.
+        :param replacement: the replacement map
+        :return: a tuple of (sign, sorted tensors, sorted sq_op)
+        """
+        sign = 1
+
+        sq_op = self._replace_sq_op_indices(self.sq_op, replacement)
+        sq_op, _sign = sq_op.canonicalize()
+        sign *= _sign
+
+        list_of_tensors = self._replace_tensors_indices(self.list_of_tensors, replacement)
+        for i, tensor in enumerate(list_of_tensors):
+            list_of_tensors[i], _sign = tensor.canonicalize()
+            sign *= _sign
+
+        return sign, list_of_tensors, sq_op
 
     # def _remove_active_only_amplitudes(self):
     #     """
@@ -646,58 +797,6 @@ class Term:
     #
     #     return adj_mat
 
-    def _minimal_indices(self):
-        """
-        Create a replacement map using minimal index labels to relabel the current term.
-        :return: a replacement map {old index label: new index label}
-        """
-        replacement = {}
-        next_index_number = {i: 0 for i in self.next_index_number.keys()}
-        n_indices = len(self.indices_set)
-        for tensor in [self.sq_op] + self.list_of_tensors:
-            for upper in tensor.upper_indices:
-                if upper in replacement:
-                    continue
-                replacement[upper] = self._generate_next_index(upper.space, next_index_number)
-            for lower in tensor.lower_indices:
-                if lower in replacement:
-                    continue
-                replacement[lower] = self._generate_next_index(lower.space, next_index_number)
-            if len(replacement.keys()) == n_indices:
-                break
-
-        return replacement
-
-    def _relabel_indices(self, replacement):
-        """
-        Relabel indices of this term according to the replacement map and resort the indices ordering.
-        :param replacement: the replacement map
-        :return: a tuple of (sign, sorted tensors, sorted sq_op)
-        """
-        sign = 1
-
-        sq_op = self._replace_sq_op_indices(self.sq_op, replacement)
-        sq_op, _sign = sq_op.canonicalize()
-        sign *= _sign
-
-        list_of_tensors = self._replace_tensors_indices(self.list_of_tensors, replacement)
-        for i, tensor in enumerate(list_of_tensors):
-            list_of_tensors[i], _sign = tensor.canonicalize()
-            sign *= _sign
-
-        return sign, list_of_tensors, sq_op
-
-    def canonicalize_simple(self):
-        """
-        Relabel the term using minimal index labels and reorder indices.
-        :return: the relabeled term
-        """
-        replacement = self._minimal_indices()
-
-        sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
-
-        return Term(list_of_tensors, sq_op, self.coeff * sign)
-
     # def canonicalize(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
     #     """
     #     Bring the current term to canonical form, which is defined by a sequence of ordering:
@@ -744,74 +843,6 @@ class Term:
     #     # relabel indices
     #     return self.canonicalize_simple()
 
-    def canonicalize_sympy(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
-        """
-        Bring the current term to canonical form using SymPy.
-        :param simplify_core_cumulant: change a cumulant labeled by core indices to a Kronecker delta
-        :param remove_active_amplitudes: remove terms when its contains all-active amplitudes
-        :return: the "canonical" form of this term
-        """
-        # remove Kronecker delta, remove active amplitudes, simplify cumulant indices
-        self.simplify(simplify_core_cumulant, remove_active_amplitudes)
-        if self.coeff == 0:
-            return self
-
-        # use SymPy to canonicalize tensor indices
-        # both tensors and sq-operator are considered contracted (dummies)
-        minimal_indices_map = self._minimal_indices()
-
-        dummy_indices = sorted(minimal_indices_map.values())
-        dummy_group = [list(values) for k, values in groupby(dummy_indices, key=lambda x: x.space)]
-        dummy_count = [0] + list(accumulate(map(len, dummy_group)))
-        dummies = [range(2 * i, 2 * j) for i, j in zip(dummy_count[:-1], dummy_count[1:])]
-
-        # figure out permutation g, note we put sq_op as the first "tensor"
-        indices_tracker = {v: 2 * i for i, v in enumerate(dummy_indices)}
-        g = []
-        for tensor in [self.sq_op] + self.list_of_tensors:
-            for index in tensor.lower_indices + tensor.upper_indices:
-                minimal_index = minimal_indices_map[index]
-                g.append(indices_tracker[minimal_index])
-                indices_tracker[minimal_index] += 1
-
-        consider_sign = isinstance(self.list_of_tensors[0].upper_indices, IndicesAntisymmetric)
-        if consider_sign:
-            g += [len(g), len(g) + 1]
-
-        # figure out equivalent tensors and tensor/sq_op base and strong generating set
-        bsgs_list = [] if self.sq_op.n_ops == 0 else [self.sq_op.base_strong_generating_set() + (1, 0)]
-        tensor_count = [sum(1 for i in group) for k, group in groupby(self.list_of_tensors,
-                                                                      key=lambda x: (x.name, x.n_body))]
-        shift = 0
-        for count in tensor_count:
-            base, gens = self.list_of_tensors[shift].base_strong_generating_set()
-            bsgs_list.append((base, gens, count, 0))
-            shift += count
-
-        # canonicalize indices
-        gc = canonicalize(Permutation(g), dummies, [0] * len(dummies), *bsgs_list)
-
-        # translate gc to Tensor and SecondQuantizedOperator
-        ann_ops = self.sq_op.indices_type([dummy_indices[i // 2] for i in gc[:self.sq_op.n_ann]])
-        cre_ops = self.sq_op.indices_type([dummy_indices[i // 2] for i in gc[self.sq_op.n_ann:self.sq_op.size]])
-        sq_op = SecondQuantizedOperator(cre_ops, ann_ops)
-
-        shift = self.sq_op.size
-        list_of_tensors = []
-        for tensor in self.list_of_tensors:
-            lower_indices = tensor.indices_type([dummy_indices[gc[i + shift] // 2] for i in range(tensor.n_lower)])
-            shift += tensor.n_lower
-            upper_indices = tensor.indices_type([dummy_indices[gc[i + shift] // 2] for i in range(tensor.n_upper)])
-            shift += tensor.n_upper
-
-            list_of_tensors.append(tensor.from_indices(upper_indices, lower_indices))
-
-        sign = 1
-        if consider_sign and g[-1] != gc[-1]:
-            sign = -1
-
-        return Term(list_of_tensors, sq_op, sign * self.coeff)
-
     def generate_spin_cases_naive(self):
         """
         Generate a list of spin-integrated Term objects.
@@ -852,7 +883,7 @@ class Term:
         :param single_ref: use single-reference indices if True
         :return: excitation operator if possible, otherwise an empty Term
         """
-        if not self.is_excitation():
+        if not self.sq_op.is_possible_excitation():
             return self.void()
 
         hole = 'c' if single_ref else 'h'

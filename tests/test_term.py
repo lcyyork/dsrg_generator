@@ -229,10 +229,27 @@ def test_simplify():
     a = Term(list_of_tensors, SecondQuantizedOperator('h0', 'g0'))
     a.simplify()
     assert a.list_of_tensors == [make_tensor('H', "c2", "c2"),
-                                 make_tensor('t', "p1", "c1"), make_tensor('t', "h0", "p1")]
+                                 make_tensor('t', "p1", "c2"), make_tensor('t', "h0", "p1")]
     assert a.sq_op == SecondQuantizedOperator('h0', 'c2')
-    assert a.indices_set == {Index(i) for i in ['c2', 'p1', 'c1', 'h0']}
+    assert a.indices_set == {Index(i) for i in ['c2', 'p1', 'h0']}
     assert a.diagonal_indices == {Index('c2')}
+
+
+def test_canonicalize_1():
+    list_of_tensors = [make_tensor('H', "g0", "g0"), make_tensor('t', "h0", "p0"), make_tensor('t', "p1", "c1"),
+                       make_tensor('L', 'g0', 'c1'), make_tensor('K', 'p0', 'p1')]
+    a = Term(list_of_tensors, SecondQuantizedOperator('h0', 'g0'))
+    ref = Term([make_tensor('H', 'c0', 'c0'), make_tensor('t', 'p0', 'c0'), make_tensor('t', 'h0', 'p0')],
+               SecondQuantizedOperator('h0', 'c0'))
+    assert a.canonicalize() == ref
+
+    a = Term([make_tensor('H', "g0", "g0"), make_tensor('t', "h0", "p0"), make_tensor('t', "p1", "h1"),
+              make_tensor('L', 'g0', 'h1'), make_tensor('L', 'h0', 'g0'), make_tensor('K', 'p0', 'p1')],
+             SecondQuantizedOperator.make_empty())
+    ref = Term([make_tensor('H', "h0", "h0"), make_tensor('t', "p0", "h1"), make_tensor('t', "h2", "p0"),
+                make_tensor('L', 'h0', 'h1'), make_tensor('L', 'h2', 'h0')],
+               SecondQuantizedOperator.make_empty())
+    assert a.canonicalize() == ref
 
 
 def test_problem():

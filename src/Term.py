@@ -536,18 +536,6 @@ class Term:
 
         return list_of_tensors, replacement, replacement_diagonal
 
-    def canonicalize(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
-        """
-        Bring the current term to canonical form.
-        :param simplify_core_cumulant: change a cumulant labeled by core indices to a Kronecker delta
-        :param remove_active_amplitudes: remove terms when its contains all-active amplitudes
-        :return: the "canonical" form of this term
-        """
-        if len(self.diagonal_indices) != 0:
-            return self.canonicalize_simple(simplify_core_cumulant, remove_active_amplitudes)
-        else:
-            return self.canonicalize_sympy(simplify_core_cumulant, remove_active_amplitudes)
-
     def canonicalize_simple(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
         """
         Relabel the term using minimal index labels and reorder indices.
@@ -566,39 +554,101 @@ class Term:
 
         return Term(list_of_tensors, sq_op, self.coeff * sign)
 
-    def canonicalize_sympy(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
+    def canonicalize(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
         """
         Bring the current term to canonical form using SymPy.
         :param simplify_core_cumulant: change a cumulant labeled by core indices to a Kronecker delta
         :param remove_active_amplitudes: remove terms when its contains all-active amplitudes
-        :return: the "canonical" form of this term
+        :return: the canonical form of this term
+
+        Examples
+        --------
+        First see an example from SymPy website: https://docs.sympy.org/latest/modules/combinatorics/tensor_can.html
+
+        Two types of indices [a, b, c, d, e, f] and [m, n], in this order, both with commuting metric
+        F_{abc}: antisymmetric, commuting
+        A_{ma}: no symmetry, commuting
+
+        T = F^{c}_{da} * F^{f}_{eb} * A^{d}_{m} * A^{mb} * A^{a}_{n} * A^{ne}
+
+        ord = [c, f, a, -a, b, -b, d, -d, e, -e, m, -m, n, -n]  # open indices (c, f) comes first
+        g = [0,7,3, 1,9,5, 11,6, 10,4, 13,2, 12,8, 14,15]  # the index ordering of T, last two for sign
+
+        gc = [0,2,4, 1,6,8, 10,3, 11,7, 12,5, 13,9, 15,14]
+        Tc = -F^{cab} * F^{fde} * A^{m}_{a} * A_{md} * A^{n}_{b} * A_{ne}
+
+        >>> from sympy.combinatorics.tensor_can import get_symmetric_group_sgs, canonicalize, bsgs_direct_product
+        >>> from sympy.combinatorics import Permutation
+        >>> base_f, gens_f = get_symmetric_group_sgs(3, 1)
+        >>> base1, gens1 = get_symmetric_group_sgs(1)
+        >>> base_A, gens_A = bsgs_direct_product(base1, gens1, base1, gens1)
+        >>> t0 = (base_f, gens_f, 2, 0)
+        >>> t1 = (base_A, gens_A, 4, 0)
+        >>> dummies = [range(2, 10), range(10, 14)]
+        >>> g = Permutation([0, 7, 3, 1, 9, 5, 11, 6, 10, 4, 13, 2, 12, 8, 14, 15])
+        >>> canonicalize(g, dummies, [0, 0], t0, t1)
+        The "[0, 0]" represents that each of the two types of indices is commuting.
+
+        For us, since term is connected by construction, indices in both sq-operator and tensors are dummies.
+        Thus, we need to figure out:
+            1) indices types (MO spaces) and define an ordering (i.e., ord above)
+            2) the current index ordering in this term
+            3) number of equivalent tensors and its base and strong generating set
+
+        For example, consider H^{v0,g0}_{v1,g1} T^{v1}_{c1} T^{v2}_{c0} T^{c0,c1}_{v0,v2} a^{g1}_{g0}
+        ord = [g0, g0, g1, g1, v0, v0, v1, v1, v2, v2, c0, c0, c1, c1]
+        dummies = [range(4), range(4, 10), range(10, 14)]
+        g = [2,0, 4,1,6,3, 7,12, 8,10, 11,13,5,9, 14,15]
+        unique_tensors = [a, H, T1, T2]
+        bsgs = [t.bsgs_count() for i in unique_tensors]
+        canonicalize(g, dummies, [0] * len(dummies), *bsgs_count)
+
+        An easy fix for tensors with diagonal indices is to repeat those indices multiple times.
+        For example, if we change "g1" to "g0" in the above example:
+        ord = [g0, g0, g0, g0, v0, v0, v1, v1, v2, v2, c0, c0, c1, c1]
+        g = [0,1, 4,2,6,3, 7,12, 8,10, 11,13,5,9]
+        The rest variables remain the same.
         """
         # remove Kronecker delta, remove active amplitudes, simplify cumulant indices
         self.simplify(simplify_core_cumulant, remove_active_amplitudes)
         if self.is_void():
             return self.void()
 
-        # use SymPy to canonicalize tensor indices
-        # both tensors and sq-operator are considered contracted (dummies)
         minimal_indices_map = self._minimal_indices()
 
-        dummy_indices = sorted(minimal_indices_map.values())
+        # number of indices
+        indices_counter = defaultdict(int)
+        for tensor in [self.sq_op] + self.list_of_tensors:
+            for index in tensor.lower_indices.indices + tensor.upper_indices.indices:
+                indices_counter[minimal_indices_map[index]] += 1
+
+        # need to count multiple times for diagonal indices
+        dummy_indices = []
+        for index, times in indices_counter.items():
+            dummy_indices += [index] * (times // 2)
+        dummy_indices = sorted(dummy_indices)
+
+        # figure out dummies: a list of ranges to represent different index types
         dummy_group = [list(values) for k, values in groupby(dummy_indices, key=lambda x: x.space)]
         dummy_count = [0] + list(accumulate(map(len, dummy_group)))
         dummies = [range(2 * i, 2 * j) for i, j in zip(dummy_count[:-1], dummy_count[1:])]
 
-        # figure out permutation g, note we put sq_op as the first "tensor"
-        indices_tracker = {v: 2 * i for i, v in enumerate(dummy_indices)}
+        # figure out starting label for each index
+        indices_tracker, shift = defaultdict(int), 0
+        for group in dummy_group:
+            for index in group:
+                if index not in indices_tracker:
+                    indices_tracker[index] = shift
+                    shift += indices_counter[index]
+
+        # figure out permutation g, note we put sq_op as the first "tensor"\
         g = []
         for tensor in [self.sq_op] + self.list_of_tensors:
-            for index in tensor.lower_indices + tensor.upper_indices:
+            for index in tensor.lower_indices.indices + tensor.upper_indices.indices:
                 minimal_index = minimal_indices_map[index]
                 g.append(indices_tracker[minimal_index])
                 indices_tracker[minimal_index] += 1
-
-        consider_sign = isinstance(self.list_of_tensors[0].upper_indices, IndicesAntisymmetric)
-        if consider_sign:
-            g += [len(g), len(g) + 1]
+        g += [len(g), len(g) + 1]
 
         # figure out equivalent tensors and tensor/sq_op base and strong generating set
         bsgs_list = [] if self.sq_op.n_ops == 0 else [self.sq_op.base_strong_generating_set() + (1, 0)]
@@ -629,7 +679,7 @@ class Term:
             list_of_tensors.append(tensor.from_indices(upper_indices, lower_indices))
 
         sign = 1
-        if consider_sign and g[-1] != gc[-1]:
+        if g[-1] != gc[-1]:
             sign = -1
 
         return Term(list_of_tensors, sq_op, sign * self.coeff)

@@ -306,7 +306,7 @@ class ClusterAmplitude(Tensor):
         raise NotImplementedError("Cannot downgrade indices for ClusterAmplitudes.")
 
     def is_all_active(self):
-        return all(i.space.lower() == 'a' for i in self.indices)
+        return all(i.space.lower() == 'a' for i in self.indices())
 
 
 @Tensor.register_subclass('HamiltonianTensor')

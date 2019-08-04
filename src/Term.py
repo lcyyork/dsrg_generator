@@ -1,4 +1,3 @@
-from copy import deepcopy
 from collections import defaultdict
 from fractions import Fraction
 from itertools import product, groupby, accumulate
@@ -6,13 +5,11 @@ from math import factorial
 from sympy.combinatorics.tensor_can import canonicalize
 from sympy.combinatorics import Permutation
 
-from typing import List
-from src.mo_space import space_priority, space_relation, space_priority_so, space_relation_so, find_space_label
+from src.mo_space import space_priority, space_relation, space_relation_so, find_space_label
 from src.Index import Index
-from src.Indices import Indices, IndicesSpinOrbital, IndicesAntisymmetric
-from src.Tensor import Tensor, Cumulant, HamiltonianTensor, ClusterAmplitude, Kronecker, HoleDensity
+from src.Indices import IndicesSpinOrbital
+from src.Tensor import Tensor, Cumulant, ClusterAmplitude, Kronecker
 from src.SQOperator import SecondQuantizedOperator
-from SpaceCounter import SpaceCounter
 
 
 class Term:
@@ -48,7 +45,7 @@ class Term:
 
         # test if this term is connected, need to separate diagonal indices
         connection = defaultdict(int)
-        for i in sq_op.indices:
+        for i in sq_op.indices():
             connection[i] += 1
         diagonal_indices = sq_op.diagonal_indices()
 
@@ -62,7 +59,7 @@ class Term:
                                 f"Inconsistent indices types: "
                                 f"{tensor} ({tensor.indices_type}), required '{sq_op.indices_type}'")
 
-            for i in tensor.indices:
+            for i in tensor.indices():
                 connection[i] += 1
             diagonal_indices.update(tensor.diagonal_indices())
 
@@ -81,13 +78,14 @@ class Term:
 
         self._list_of_tensors = sorted(list_of_tensors)
         self._indices_set = set(connection.keys())
-        self._diagonal_indices = {i: connection[i] for i in diagonal_indices}
 
         # determine the next available index for each space
         next_index_number = {i: 0 for i in space_priority}
         for i in self._indices_set:
             next_index_number[i.space] = max(next_index_number[i.space], i.number + 1)
         self._next_index_number = next_index_number
+
+        self._diagonal_indices = {i: connection[i] for i in diagonal_indices}
 
     @classmethod
     def from_term(cls, term, flip_sign=False):
@@ -544,8 +542,14 @@ class Term:
         :return: the "canonical" form of this term
         """
         if len(self.diagonal_indices) != 0:
-            temp = self.canonicalize_simple(simplify_core_cumulant, remove_active_amplitudes)
-            return temp.canonicalize_sympy(simplify_core_cumulant, remove_active_amplitudes)
+            raise NotImplementedError("Canonicalization is not yet available for a term containing"
+                                      " tensors with diagonal indices.")
+            # TODO list:
+            #   1) simplify term using canonicalize_simple()
+            #   2) up-convert diagonal indices to non-diagonal indices
+            #   3) canonicalize using SymPy while keep tracking diagonal indices
+            #   4) relabel tensors' indices
+
         else:
             return self.canonicalize_sympy(simplify_core_cumulant, remove_active_amplitudes)
 
@@ -615,13 +619,6 @@ class Term:
         unique_tensors = [a, H, T1, T2]
         bsgs = [t.bsgs_count() for i in unique_tensors]
         canonicalize(g, dummies, [0] * len(dummies), *bsgs_count)
-
-        For tensors with diagonal indices, we treat these indices as different types to others of same MO space.
-        For example, H^{v0,g0}_{v0,g1} T^{v0}_{c1} T^{v2}_{c0} T^{c0,c1}_{v0,v2} a^{g1}_{g0}
-        ord = [g0, g0, g1, g1, v0, v0, v0, v0, v2, v2, c0, c0, c1, c1]
-        dummies = [range(4), range(4, 8), range(8, 10), range(10, 14)]
-        g = [0,2, 4,3,5,1, 12,6, 10,8, 7,9,11,13, 14,15]
-        Note that we treat "v0" as a different type of "v2", though they are all virtual indices.
         """
         # remove Kronecker delta, remove active amplitudes, simplify cumulant indices
         self.simplify(simplify_core_cumulant, remove_active_amplitudes)
@@ -629,45 +626,24 @@ class Term:
             return self.void()
 
         minimal_indices_map = self._minimal_indices()
-        print(self)
-        print(minimal_indices_map)
 
-        # replaced diagonal indices
-        diagonal_indices = {minimal_indices_map[i]: v for i, v in self.diagonal_indices.items()}
-        print(diagonal_indices)
-
-        # dummy indices that are not diagonal
-        dummy_indices = sorted(i for i in minimal_indices_map.values() if i not in diagonal_indices)
+        # dummy indices
+        dummy_indices = sorted(minimal_indices_map.values())
 
         # classify indices to groups according to MO space
         dummy_group = [list(values) for k, values in groupby(dummy_indices, key=lambda x: x.space)]
-
-        # consider diagonal indices
-        if diagonal_indices:
-            for i, count in diagonal_indices.items():
-                dummy_group.append([i] * (count // 2))
-            dummy_group = sorted(dummy_group)
-            dummy_indices = [i for group in dummy_group for i in group]
-        print(dummy_group)
 
         # finally for actually dummies
         dummy_count = [0] + list(accumulate(map(len, dummy_group)))
         dummies = [range(2 * i, 2 * j) for i, j in zip(dummy_count[:-1], dummy_count[1:])]
 
-        print(dummies)
-        print(dummy_indices)
+        # starting label for each index
+        indices_tracker = {v: 2 * i for i, v in enumerate(dummy_indices)}
 
-        # figure out starting label for each index
-        indices_tracker = {}
-        for i, v in enumerate(dummy_indices):
-            if v not in indices_tracker:
-                indices_tracker[v] = 2 * i
-        print(indices_tracker)
-
-        # figure out permutation g, note we put sq_op as the first "tensor"
+        # permutation g, note we put sq_op as the first "tensor"
         g = []
         for tensor in [self.sq_op] + self.list_of_tensors:
-            for index in tensor.lower_indices.indices + tensor.upper_indices.indices:
+            for index in tensor.indices(False):
                 minimal_index = minimal_indices_map[index]
                 g.append(indices_tracker[minimal_index])
                 indices_tracker[minimal_index] += 1
@@ -715,19 +691,12 @@ class Term:
         replacement = {}
         next_index_number = {i: 0 for i in space_priority}
 
-        for i in self.diagonal_indices:
-            replacement[i] = self._generate_next_index(i.space, next_index_number)
-
         n_indices = len(self.indices_set)
         for tensor in [self.sq_op] + self.list_of_tensors:
-            for upper in tensor.upper_indices:
-                if upper in replacement:
+            for i in tensor.indices():
+                if i in replacement:
                     continue
-                replacement[upper] = self._generate_next_index(upper.space, next_index_number)
-            for lower in tensor.lower_indices:
-                if lower in replacement:
-                    continue
-                replacement[lower] = self._generate_next_index(lower.space, next_index_number)
+                replacement[i] = self._generate_next_index(i.space, next_index_number)
             if len(replacement) == n_indices:
                 break
 
@@ -923,7 +892,7 @@ class Term:
             try:
                 sq_op = pairs[0]
                 list_of_tensors = list(pairs[1:])
-                terms.append(Term(list_of_tensors, sq_op, self.coeff, need_to_sort=False).canonicalize_sympy())
+                terms.append(Term(list_of_tensors, sq_op, self.coeff).canonicalize_sympy())
             except ValueError:
                 pass
 
@@ -941,7 +910,6 @@ class Term:
 
         return out
 
-    # TODO: need to check spin cases, if works for diagonal indices
     def make_excitation(self, single_ref):
         """
         Make a Term to excitation operator if possible.
@@ -978,7 +946,6 @@ class Term:
 
         return Term(list_of_tensors, sq_op, self.coeff * sign).canonicalize()
 
-    # TODO: check if works for diagonal indices
     def make_one_body_diagonal(self, single_ref):
         """
         Make a one-body Term to a diagonal operator.
@@ -1013,7 +980,6 @@ class Term:
 
             yield Term(list_of_tensors, sq_op, self.coeff * sign).canonicalize()
 
-    # TODO: check if works for diagonal indices
     def make_ddca(self, max_core, max_virt, single_ref):
         """
         Apply distinguished diagonal component approximation to this term.
@@ -1022,7 +988,7 @@ class Term:
         :param single_ref: ignore active indices
         :return: yield filtered terms
         """
-        indices_0 = self.sq_op.indices
+        indices_0 = self.sq_op.indices()
 
         for spaces in product(*[space_relation[i.space] for i in indices_0]):
             count = {s: 0 for s in space_relation_so.keys()}

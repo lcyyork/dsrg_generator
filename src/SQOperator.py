@@ -77,7 +77,7 @@ class SecondQuantizedOperator(IndicesPair):
         for i in self.ann_ops:
             if 'v' == i.space.lower():
                 return False
-        if set(i.space.lower() for i in self.indices) == {'a'}:
+        if set(i.space.lower() for i in self.indices()) == {'a'}:
             return False
         return True
 

@@ -1,3 +1,4 @@
+import pytest
 from src.Index import Index
 from src.Term import Term
 from src.Tensor import Tensor
@@ -239,42 +240,8 @@ def test_canonicalize_1():
     list_of_tensors = [make_tensor('H', "g0", "g0"), make_tensor('t', "h0", "p0"), make_tensor('t', "p1", "c1"),
                        make_tensor('L', 'g0', 'c1'), make_tensor('K', 'p0', 'p1')]
     a = Term(list_of_tensors, SecondQuantizedOperator('h0', 'g0'))
-    ref = Term([make_tensor('H', 'c0', 'c0'), make_tensor('t', 'c0', 'p0'), make_tensor('t', 'h0', 'p0')],
-               SecondQuantizedOperator('h0', 'c0'))
-    print(a.canonicalize())
-    # assert a.canonicalize() == ref
-
-    index_type = 'so'
-    a = Term([make_tensor('H', "g0", "g0", index_type),
-              make_tensor('t', "h0", "p0", index_type), make_tensor('t', "p1", "h1", index_type),
-              make_tensor('L', 'g0', 'h1', index_type), make_tensor('L', 'h0', 'g0', index_type),
-              make_tensor('K', 'p0', 'p1', index_type)],
-             SecondQuantizedOperator.make_empty(index_type))
-    ref = Term([make_tensor('H', "h0", "h0"), make_tensor('t', "h1", "p0"), make_tensor('t', "h2", "p0"),
-                make_tensor('L', 'h0', 'h1'), make_tensor('L', 'h2', 'h0')],
-               SecondQuantizedOperator.make_empty())
-    # print(a.canonicalize_simple())
-    # print(a.canonicalize_simple().canonicalize_simple())
-    print(a.canonicalize())
-    # # assert a.canonicalize() == ref
-
-    a = Term([make_tensor('H', "g0", "g0", index_type),
-              make_tensor('t', "h0, a0", "p0, a0", index_type), make_tensor('t', "p1", "h1", index_type),
-              make_tensor('L', 'g0, a0', 'h1, a0', index_type), make_tensor('L', 'h0', 'g0', index_type),
-              make_tensor('K', 'p0', 'p1', index_type)],
-             SecondQuantizedOperator.make_empty(index_type))
-    ref = Term([make_tensor('H', "a0", "a0"),
-                make_tensor('t', "a2", "p0"), make_tensor('t', "a1, a3", "p0, a1"),
-                make_tensor('L', 'a3', 'a0'), make_tensor('L', 'a1, a2', 'a0, a1')],
-               SecondQuantizedOperator.make_empty())
-    # print(a.canonicalize())
-    # print(ref)
-    b = a.canonicalize()
-    print(b)
-    c = b.canonicalize()
-    print(c)
-    print(ref)
-    # assert b.list_of_tensors == ref.list_of_tensors
+    with pytest.raises(NotImplementedError):
+        assert a.canonicalize()
 
 
 def test_problem():

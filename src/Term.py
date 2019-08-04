@@ -427,9 +427,7 @@ class Term:
         if remove_active_amplitudes:
             for tensor in list_of_tensors:
                 if isinstance(tensor, ClusterAmplitude):
-                    space = set([replacement[i].space for i in tensor.upper_indices]).union(
-                        set([replacement[i].space for i in tensor.lower_indices]))
-                    if len(space) == 1 and (next(iter(space)) in ('a', 'A')):
+                    if all(replacement[i].space.lower() == 'a' for i in tensor.indices()):
                         self.void_self()
                         return
                 final_tensors.append(tensor)

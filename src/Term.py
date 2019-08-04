@@ -81,7 +81,7 @@ class Term:
 
         self._list_of_tensors = sorted(list_of_tensors)
         self._indices_set = set(connection.keys())
-        self._diagonal_indices = diagonal_indices
+        self._diagonal_indices = {i: connection[i] for i in diagonal_indices}
 
         # determine the next available index for each space
         next_index_number = {i: 0 for i in space_priority}
@@ -441,7 +441,7 @@ class Term:
         # relabel tensors using replacement map
         self._list_of_tensors = self._replace_tensors_indices(final_tensors, replacement)
         self._indices_set = set(replacement.values())
-        self._diagonal_indices = set(replacement[i] for i in self.diagonal_indices)
+        self._diagonal_indices = {replacement[i]: v for i, v in self.diagonal_indices.items()}
 
     def _downgrade_cumulant_indices(self, simplify_core_cumulant=True):
         """
@@ -536,6 +536,19 @@ class Term:
 
         return list_of_tensors, replacement, replacement_diagonal
 
+    def canonicalize(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
+        """
+        Bring the current term to canonical form.
+        :param simplify_core_cumulant: change a cumulant labeled by core indices to a Kronecker delta
+        :param remove_active_amplitudes: remove terms when its contains all-active amplitudes
+        :return: the "canonical" form of this term
+        """
+        if len(self.diagonal_indices) != 0:
+            temp = self.canonicalize_simple(simplify_core_cumulant, remove_active_amplitudes)
+            return temp.canonicalize_sympy(simplify_core_cumulant, remove_active_amplitudes)
+        else:
+            return self.canonicalize_sympy(simplify_core_cumulant, remove_active_amplitudes)
+
     def canonicalize_simple(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
         """
         Relabel the term using minimal index labels and reorder indices.
@@ -554,7 +567,7 @@ class Term:
 
         return Term(list_of_tensors, sq_op, self.coeff * sign)
 
-    def canonicalize(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
+    def canonicalize_sympy(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
         """
         Bring the current term to canonical form using SymPy.
         :param simplify_core_cumulant: change a cumulant labeled by core indices to a Kronecker delta
@@ -598,16 +611,17 @@ class Term:
         For example, consider H^{v0,g0}_{v1,g1} T^{v1}_{c1} T^{v2}_{c0} T^{c0,c1}_{v0,v2} a^{g1}_{g0}
         ord = [g0, g0, g1, g1, v0, v0, v1, v1, v2, v2, c0, c0, c1, c1]
         dummies = [range(4), range(4, 10), range(10, 14)]
-        g = [2,0, 4,1,6,3, 7,12, 8,10, 11,13,5,9, 14,15]
+        g = [0,2, 6,3,4,1, 12,7, 10,8, 5,9,11,13, 14,15]  # we start from lower indices
         unique_tensors = [a, H, T1, T2]
         bsgs = [t.bsgs_count() for i in unique_tensors]
         canonicalize(g, dummies, [0] * len(dummies), *bsgs_count)
 
-        An easy fix for tensors with diagonal indices is to repeat those indices multiple times.
-        For example, if we change "g1" to "g0" in the above example:
-        ord = [g0, g0, g0, g0, v0, v0, v1, v1, v2, v2, c0, c0, c1, c1]
-        g = [0,1, 4,2,6,3, 7,12, 8,10, 11,13,5,9]
-        The rest variables remain the same.
+        For tensors with diagonal indices, we treat these indices as different types to others of same MO space.
+        For example, H^{v0,g0}_{v0,g1} T^{v0}_{c1} T^{v2}_{c0} T^{c0,c1}_{v0,v2} a^{g1}_{g0}
+        ord = [g0, g0, g1, g1, v0, v0, v0, v0, v2, v2, c0, c0, c1, c1]
+        dummies = [range(4), range(4, 8), range(8, 10), range(10, 14)]
+        g = [0,2, 4,3,5,1, 12,6, 10,8, 7,9,11,13, 14,15]
+        Note that we treat "v0" as a different type of "v2", though they are all virtual indices.
         """
         # remove Kronecker delta, remove active amplitudes, simplify cumulant indices
         self.simplify(simplify_core_cumulant, remove_active_amplitudes)
@@ -615,33 +629,42 @@ class Term:
             return self.void()
 
         minimal_indices_map = self._minimal_indices()
+        print(self)
+        print(minimal_indices_map)
 
-        # number of indices
-        indices_counter = defaultdict(int)
-        for tensor in [self.sq_op] + self.list_of_tensors:
-            for index in tensor.lower_indices.indices + tensor.upper_indices.indices:
-                indices_counter[minimal_indices_map[index]] += 1
+        # replaced diagonal indices
+        diagonal_indices = {minimal_indices_map[i]: v for i, v in self.diagonal_indices.items()}
+        print(diagonal_indices)
 
-        # need to count multiple times for diagonal indices
-        dummy_indices = []
-        for index, times in indices_counter.items():
-            dummy_indices += [index] * (times // 2)
-        dummy_indices = sorted(dummy_indices)
+        # dummy indices that are not diagonal
+        dummy_indices = sorted(i for i in minimal_indices_map.values() if i not in diagonal_indices)
 
-        # figure out dummies: a list of ranges to represent different index types
+        # classify indices to groups according to MO space
         dummy_group = [list(values) for k, values in groupby(dummy_indices, key=lambda x: x.space)]
+
+        # consider diagonal indices
+        if diagonal_indices:
+            for i, count in diagonal_indices.items():
+                dummy_group.append([i] * (count // 2))
+            dummy_group = sorted(dummy_group)
+            dummy_indices = [i for group in dummy_group for i in group]
+        print(dummy_group)
+
+        # finally for actually dummies
         dummy_count = [0] + list(accumulate(map(len, dummy_group)))
         dummies = [range(2 * i, 2 * j) for i, j in zip(dummy_count[:-1], dummy_count[1:])]
 
-        # figure out starting label for each index
-        indices_tracker, shift = defaultdict(int), 0
-        for group in dummy_group:
-            for index in group:
-                if index not in indices_tracker:
-                    indices_tracker[index] = shift
-                    shift += indices_counter[index]
+        print(dummies)
+        print(dummy_indices)
 
-        # figure out permutation g, note we put sq_op as the first "tensor"\
+        # figure out starting label for each index
+        indices_tracker = {}
+        for i, v in enumerate(dummy_indices):
+            if v not in indices_tracker:
+                indices_tracker[v] = 2 * i
+        print(indices_tracker)
+
+        # figure out permutation g, note we put sq_op as the first "tensor"
         g = []
         for tensor in [self.sq_op] + self.list_of_tensors:
             for index in tensor.lower_indices.indices + tensor.upper_indices.indices:
@@ -690,7 +713,11 @@ class Term:
         :return: a replacement map {old index label: new index label}
         """
         replacement = {}
-        next_index_number = {i: 0 for i in self.next_index_number.keys()}
+        next_index_number = {i: 0 for i in space_priority}
+
+        for i in self.diagonal_indices:
+            replacement[i] = self._generate_next_index(i.space, next_index_number)
+
         n_indices = len(self.indices_set)
         for tensor in [self.sq_op] + self.list_of_tensors:
             for upper in tensor.upper_indices:
@@ -701,7 +728,7 @@ class Term:
                 if lower in replacement:
                     continue
                 replacement[lower] = self._generate_next_index(lower.space, next_index_number)
-            if len(replacement.keys()) == n_indices:
+            if len(replacement) == n_indices:
                 break
 
         return replacement
@@ -949,7 +976,7 @@ class Term:
 
         sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
 
-        return Term(list_of_tensors, sq_op, self.coeff * sign).canonicalize_sympy()
+        return Term(list_of_tensors, sq_op, self.coeff * sign).canonicalize()
 
     # TODO: check if works for diagonal indices
     def make_one_body_diagonal(self, single_ref):
@@ -984,7 +1011,7 @@ class Term:
 
             sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
 
-            yield Term(list_of_tensors, sq_op, self.coeff * sign).canonicalize_sympy()
+            yield Term(list_of_tensors, sq_op, self.coeff * sign).canonicalize()
 
     # TODO: check if works for diagonal indices
     def make_ddca(self, max_core, max_virt, single_ref):
@@ -1016,7 +1043,7 @@ class Term:
 
             sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
 
-            yield Term(list_of_tensors, sq_op, self.coeff * sign).canonicalize_sympy()
+            yield Term(list_of_tensors, sq_op, self.coeff * sign).canonicalize()
 
     def expand_composite_indices(self, single_ref):
         """

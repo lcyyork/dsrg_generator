@@ -170,6 +170,9 @@ def test_void():
     c = Term.make_empty('so')
     assert b == c
 
+    a.void_self()
+    assert a == b
+
 
 def test_perm_part():
     list_of_tensors = [make_tensor('H', 'g0, g1', 'g2, p0'), make_tensor('T', 'h0, h1', 'p0, p1')]
@@ -244,28 +247,56 @@ def test_canonicalize_1():
         assert a.canonicalize()
 
 
-def test_problem():
-    """
-    -1/2 & H^{ v_{0} }_{ v_{1} } T^{ v_{1} }_{ c_{1} } T^{ v_{2} }_{ c_{0} } T^{ c_{0} c_{1} }_{ v_{0} v_{2} }
-    -1/2 & H^{ v_{0} }_{ v_{1} } T^{ c_{0} }_{ v_{2} } T^{ c_{1} }_{ v_{0} } T^{ v_{1} v_{2} }_{ c_{0} c_{1} }
-    """
-    "1 H^{ v_{1} }_{ v_{0} } T^{ c_{0} }_{ v_{0} } T^{ c_{1} }_{ v_{2} } T^{ c_{1} c_{0} }_{ v_{1} v_{2} } a^{  }_{  }"
+def test_canonicalize_2():
+    # H^{ v_{0} }_{ v_{1} } T^{ v_{1} }_{ c_{1} } T^{ v_{2} }_{ c_{0} } T^{ c_{0} c_{1} }_{ v_{0} v_{2} }
     indices_type = 'so'
-    list_of_tensors = [Tensor.make_tensor('Hamiltonian', "v0", "v1", indices_type),
-                       Tensor.make_tensor('cluster_amplitude', "v1", "c1", indices_type),
-                       Tensor.make_tensor('cluster_amplitude', "v2", "c0", indices_type),
-                       Tensor.make_tensor('cluster_amplitude', "c0,c1", "v0,v2", indices_type)]
+    list_of_tensors = [make_tensor('Hamiltonian', "v0", "v1", indices_type),
+                       make_tensor('cluster_amplitude', "v1", "c1", indices_type),
+                       make_tensor('cluster_amplitude', "v2", "c0", indices_type),
+                       make_tensor('cluster_amplitude', "c0,c1", "v0,v2", indices_type)]
     sq_op = SecondQuantizedOperator.make_empty(indices_type)
     a = Term(list_of_tensors, sq_op)
 
-    list_of_tensors = [Tensor.make_tensor('Hamiltonian', "v0", "v1", indices_type),
-                       Tensor.make_tensor('cluster_amplitude', "c0", "v2", indices_type),
-                       Tensor.make_tensor('cluster_amplitude', "c1", "v0", indices_type),
-                       Tensor.make_tensor('cluster_amplitude', "v1,v2", "c0,c1", indices_type)]
+    # H^{ v_{0} }_{ v_{1} } T^{ c_{0} }_{ v_{2} } T^{ c_{1} }_{ v_{0} } T^{ v_{1} v_{2} }_{ c_{0} c_{1} }
+    list_of_tensors = [make_tensor('Hamiltonian', "v0", "v1", indices_type),
+                       make_tensor('cluster_amplitude', "c0", "v2", indices_type),
+                       make_tensor('cluster_amplitude', "c1", "v0", indices_type),
+                       make_tensor('cluster_amplitude', "v1,v2", "c0,c1", indices_type)]
     b = Term(list_of_tensors, sq_op)
 
-    ac = a.canonicalize()
-    bc = b.canonicalize()
-    print(ac)
-    print(bc)
-    print(ac == bc)
+    ref = Term([make_tensor('Hamiltonian', "v1", "v0", indices_type),
+                make_tensor('cluster_amplitude', "c0", "v0", indices_type),
+                make_tensor('cluster_amplitude', "c1", "v2", indices_type),
+                make_tensor('cluster_amplitude', "c0,c1", "v1,v2", indices_type)],
+               sq_op, -1)
+    assert ref == a.canonicalize() == b.canonicalize()
+
+
+def test_canonicalize_3():
+    # -1 * H^{g0,g1}_{g2,g3} * T^{h0,h1}_{p0,p1} * L^{p1}_{g2} * L^{p0}_{g3} * a^{g0,g1}_{h0, h1}
+    list_of_tensors = [make_tensor('H', 'g0, g1', 'g2, g3'), make_tensor('t', 'p0, p1', 'h0, h1'),
+                       make_tensor('L', 'p1', 'g2'), make_tensor('L', 'p0', 'g3')]
+    sq_op = make_sq('g0, g1', 'h0, h1')
+    a = Term(list_of_tensors, sq_op, -1)
+
+    ref = Term([make_tensor('H', 'a0, a1', 'g0, g1'), make_tensor('t', 'a2, a3', 'h0, h1'),
+                make_tensor('L', 'a2', 'a0'), make_tensor('L', 'a3', 'a1')], sq_op, 1)
+    assert a.canonicalize() == ref
+
+    list_of_tensors = [make_tensor('H', 'g0, G1', 'g2, G3', 'si'), make_tensor('t', 'P0, p1', 'H0, h1', 'si'),
+                       make_tensor('L', 'p1', 'g2', 'si'), make_tensor('L', 'P0', 'G3', 'si')]
+    a = Term(list_of_tensors, make_sq('g0, G1', 'H0, h1', 'si'))
+
+    ref = Term([make_tensor('H', 'a0, A0', 'g0, G0', 'si'), make_tensor('t', 'a1, A1', 'h0, H0', 'si'),
+                make_tensor('L', 'a1', 'a0', 'si'), make_tensor('L', 'A1', 'A0', 'si')],
+               make_sq('g0, G0', 'h0, H0', 'si'), -1)
+    assert ref == a.canonicalize()
+
+    list_of_tensors = [make_tensor('H', 'g0, G1', 'g2, G3', 'sa'), make_tensor('t', 'P0, p1', 'H0, h1', 'sa'),
+                       make_tensor('L', 'p1', 'g2', 'sa'), make_tensor('L', 'P0', 'G3', 'sa')]
+    a = Term(list_of_tensors, make_sq('g0, G1', 'h1, H0', 'sa'))
+
+    ref = Term([make_tensor('H', 'a0, A0', 'g0, G0', 'sa'), make_tensor('t', 'a1, A1', 'h0, H0', 'sa'),
+                make_tensor('L', 'a1', 'a0', 'sa'), make_tensor('L', 'A1', 'A0', 'sa')],
+               make_sq('g0, G0', 'h0, H0', 'sa'))
+    assert ref == a.canonicalize()

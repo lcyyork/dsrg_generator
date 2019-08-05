@@ -47,6 +47,16 @@ def test_contract_terms_1():
     for i in a:
         assert i in ref
 
+
+def test_single_commutator():
+    h = hamiltonian_operator(2)
+    t2e = cluster_operator(2)
+
+    a = single_commutator(h, t2e, for_commutator=True)
+    b = single_commutator(h, t2e, for_commutator=False, n_process=4)
+
+    assert a == b
+
 # def test_f_t1():
 #     F = hamiltonian_operator(1)
 #     T1e = cluster_operator(1)

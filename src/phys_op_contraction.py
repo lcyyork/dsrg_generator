@@ -129,11 +129,12 @@ def combine_terms(terms):
         terms_dict[name] = term
         terms_to_coeff[name].append(term.coeff)
 
+    out = []
     for name, term in terms_dict.items():
         term.coeff = sum(terms_to_coeff[name])
-        if abs(term.coeff) < 1.0e-15:
-            terms_dict.pop(name)
-    return sorted(terms_dict.values())
+        if not term.is_void():
+            out.append(term)
+    return sorted(out)
 
 
 def single_commutator(left, right, max_cu=3, max_n_open=6, min_n_open=0,

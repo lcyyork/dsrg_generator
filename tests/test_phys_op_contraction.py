@@ -5,7 +5,7 @@ from src.Tensor import Tensor
 from src.SQOperator import SecondQuantizedOperator
 from src.phys_op_contraction import contract_terms, combine_terms
 from src.phys_op_contraction import single_commutator, recursive_single_commutator
-# from src.phys_op_contraction import nested_commutator_ucc
+from src.phys_op_contraction import bch_cc_rsc
 
 
 make_tensor = Tensor.make_tensor
@@ -97,6 +97,54 @@ def test_recursive_single_commutator_3():
     c = recursive_single_commutator([t1e, t2e, h], [2, 3], (0, 6), n_process=4)
 
     assert a[2] == combine_terms(b[2] + c[2])
+
+
+def test_bch_cc_rsc_1():
+    # single-reference CCSD with recursive single commutator approximation
+    a = bch_cc_rsc(4, [1, 2], 1, (0, 4), single_reference=True, unitary=False)
+    r = sorted(i for n, terms in a.items() for i in terms)
+    assert len(r) == 46
+
+    samples = [Term([make_tensor('H', 'v1,v2', 'g0,c2'), make_tensor('t', 'c2', 'v1'),
+                     make_tensor('t', 'c0,c1', 'v0,v2')], make_sq('g0,v0', 'c0,c1'), 0.25),
+               Term([make_tensor('H', 'c1,c2', 'g0,v2'), make_tensor('t', 'c1', 'v2'),
+                     make_tensor('t', 'c0,c2', 'v0,v1')], make_sq('v0,v1', 'g0,c0'), -0.25),
+               Term([make_tensor('H', 'c2,c3', 'v2,v3'), make_tensor('t', 'c0,c1', 'v0,v2'),
+                     make_tensor('t', 'c2,c3', 'v1,v3')], make_sq('v0,v1', 'c0,c1'), -0.125),
+               Term([make_tensor('H', 'c2,c3', 'v2,v3'), make_tensor('t', 'c0,c2', 'v0,v1'),
+                     make_tensor('t', 'c1,c3', 'v2,v3')], make_sq('v0,v1', 'c0,c1'), -0.125),
+               Term([make_tensor('H', 'c2,c3', 'v2,v3'), make_tensor('t', 'c0', 'v2'),
+                     make_tensor('t', 'c2', 'v3'), make_tensor('t', 'c1,c3', 'v0,v1')],
+                    make_sq('v0,v1', 'c0,c1'), -0.25),
+               Term([make_tensor('H', 'c2,c3', 'v2,v3'), make_tensor('t', 'c2', 'v0'),
+                     make_tensor('t', 'c3', 'v2'), make_tensor('t', 'c0,c1', 'v1,v3')],
+                    make_sq('v0,v1', 'c0,c1'), -0.25)]
+    for i in samples:
+        assert i in r
+
+
+# def test_contraction_categorized_5():
+#     from timeit import default_timer as timer
+#
+#     """
+#     [a^{ v_{0} v_{1} v_{2} v_{3} }_{ c_{0} c_{1} c_{2} c_{3} }, a^{ v_{12} v_{13} }_{ c_{12} c_{13} }]
+#     [a^{ v_{12} v_{13} }_{ c_{12} c_{13} }, a^{ v_{0} v_{1} v_{2} v_{3} }_{ c_{0} c_{1} c_{2} c_{3} }]
+#     [a^{ v_{0} v_{1} v_{2} v_{3} }_{ c_{0} c_{1} c_{2} c_{3} }, a^{ v_{12} v_{13} }_{ c_{12} c_{13} }]
+#     [a^{ v_{12} v_{13} }_{ c_{12} c_{13} }, a^{ v_{0} v_{1} v_{2} v_{3} }_{ c_{0} c_{1} c_{2} c_{3} }]
+#     [a^{ v_{0} v_{1} v_{2} v_{3} }_{ c_{0} c_{1} c_{2} c_{3} }, a^{ v_{12} v_{13} }_{ c_{12} c_{13} }]
+#     [a^{ v_{12} v_{13} }_{ c_{12} c_{13} }, a^{ v_{0} v_{1} v_{2} v_{3} }_{ c_{0} c_{1} c_{2} c_{3} }]
+#     """
+#
+#     "a^{ g_{0} v_{0} v_{1} v_{2} v_{3} }_{ c_{0} c_{1} c_{2} c_{3} c_{4} }, a^{ v_{12} v_{13} }_{ c_{12} c_{13} }"
+#     h = SQ("g0,v0,v1,v2,v3", "c0,c1,c2,c3,c4")
+#     t = SQ("v12,v13", "c12,c13")
+#
+#     start = timer()
+#     a = [i for con in compute_operator_contractions([h, t], max_cu=1, for_commutator=True, max_n_open=12,
+#                                                     n_process=4, batch_size=0)
+#          for i in con]
+#     print(f"Time to compute T2^+ * H * T2 * T2: {timer() - start:.3f} s")
+#     print(len(a))
 
 # def test_f_t1():
 #     F = hamiltonian_operator(1)

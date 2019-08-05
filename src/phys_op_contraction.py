@@ -173,29 +173,32 @@ def recursive_single_commutator(terms, max_cu_levels, n_opens, for_commutator=Tr
     :param n_process: number of processes launched for tensor canonicalization
     :return: a map of nested level to a list of contracted canonicalized Term objects
     """
-    n_nested = len(terms)
-    if n_nested < 2:
+    n_terms = len(terms)
+    if n_terms < 2:
         raise ValueError("Need to have at least two terms for a valid commutator.")
 
     if isinstance(max_cu_levels, int):
-        max_cu_levels = [max_cu_levels] * (n_nested - 1)
-    if len(max_cu_levels) != n_nested - 1:
-        raise ValueError(f"Inconsistent size of max_cu_levels ({max_cu_levels}), required {n_nested - 1}")
+        max_cu_levels = [max_cu_levels] * (n_terms - 1)
+    if len(max_cu_levels) != n_terms - 1:
+        raise ValueError(f"Inconsistent size of max_cu_levels ({max_cu_levels}), required {n_terms - 1}")
+    if any(not isinstance(i, int) for i in max_cu_levels):
+        raise ValueError(f"Invalid max_cu_levels ({max_cu_levels}): not all integers")
 
     if isinstance(n_opens, tuple):
-        if any(not isinstance(i, int) for i in n_opens):
-            raise ValueError(f"Invalid n_opens ({n_opens}), required format [(min, max), ...]")
-        if len(n_opens) != 2:
-            raise ValueError(f"Invalid n_opens ({n_opens}), tuple must contain only min and max")
-        n_opens = [n_opens] * (n_nested - 1)
-    if len(n_opens) != n_nested - 1:
-        raise ValueError(f"Inconsistent size of n_opens ({n_opens}), required {n_nested - 1}")
+        n_opens = [n_opens] * (n_terms - 1)
+    if len(n_opens) != n_terms - 1:
+        raise ValueError(f"Inconsistent size of n_opens ({n_opens}), required {n_terms - 1}")
+    for n in n_opens:
+        if len(n) != 2:
+            raise ValueError(f"Invalid element in n_opens: {n} cannot be used for min/max numbers of open indices.")
+        if not (isinstance(n[0], int) and isinstance(n[1], int)):
+            raise ValueError(f"Invalid element in n_opens: {n} contains non-integer elements")
 
     left_pool = [terms[0]]
 
     out = defaultdict(list)
 
-    for i in range(1, n_nested):
+    for i in range(1, n_terms):
         right = terms[i]
 
         max_cu = max_cu_levels[i - 1]
@@ -211,18 +214,14 @@ def recursive_single_commutator(terms, max_cu_levels, n_opens, for_commutator=Tr
     return out
 
 
-def bch_cc_rsc(nested_level, cluster_levels, max_cu=3, max_n_open=6, min_n_open=0,
-               max_n_open_final=6, min_n_open_final=0, for_commutator=True,
+def bch_cc_rsc(nested_level, cluster_levels, max_cu_levels, n_opens, for_commutator=True,
                expand_hole=True, single_reference=False, unitary=False, n_process=1):
     """
     Compute the BCH nested commutator in coupled cluster theory using recursive commutator formalism.
     :param nested_level: the level of nested commutator
     :param cluster_levels: a list of integers for cluster operator, e.g., [1,2,3] for T1 + T2 + T3
-    :param max_cu: max value of cumulant allowed for contraction
-    :param max_n_open: the max number of open indices for contractions of each single commutator
-    :param min_n_open: the min number of open indices for contractions of each single commutator
-    :param max_n_open_final: max number of open indices for return
-    :param min_n_open_final: min number of open indices for return
+    :param max_cu_levels: a list of integers for max cumulant level of each level of commutator
+    :param n_opens: a list of tuple [(min, max)] for numbers of open indices of each level of commutator
     :param for_commutator: compute only non-zero terms for commutators if True
     :param expand_hole: expand HoleDensity to Kronecker minus Cumulant if True
     :param single_reference: use single-reference amplitudes if True
@@ -232,31 +231,49 @@ def bch_cc_rsc(nested_level, cluster_levels, max_cu=3, max_n_open=6, min_n_open=
     """
     if not isinstance(nested_level, int):
         raise ValueError("Invalid nested_level (must be an integer)")
+
     if not all(isinstance(t, int) for t in cluster_levels):
         raise ValueError("Invalid content in cluster_operator (must be all integers)")
+
+    if isinstance(max_cu_levels, int):
+        max_cu_levels = [max_cu_levels] * nested_level
+    if len(max_cu_levels) != nested_level:
+        raise ValueError(f"Inconsistent size of max_cu_levels ({max_cu_levels}), required {nested_level}")
+    if any(not isinstance(i, int) for i in max_cu_levels):
+        raise ValueError(f"Invalid max_cu_levels ({max_cu_levels}): not all integers")
+
+    if isinstance(n_opens, tuple):
+        n_opens = [n_opens] * nested_level
+    if len(n_opens) != nested_level:
+        raise ValueError(f"Inconsistent size of n_opens ({n_opens}), required {nested_level}")
+    for n in n_opens:
+        if len(n) != 2:
+            raise ValueError(f"Invalid element in n_opens: {n} cannot be used for min/max numbers of open indices.")
+        if not (isinstance(n[0], int) and isinstance(n[1], int)):
+            raise ValueError(f"Invalid element in n_opens: {n} contains non-integer elements")
 
     hole_label = 'c' if single_reference else 'h'
     particle_label = 'v' if single_reference else 'p'
 
-    max_amp = max(cluster_levels)
+    max_amp = max(cluster_levels) * 2
     amps = [[cluster_operator(k, hole_label=hole_label, particle_label=particle_label,
                               start=(max_amp * i)) for k in cluster_levels]
             for i in range(nested_level)]
     if unitary:
         for i in range(nested_level):
-            amps[i] += [ClusterOperator(k, excitation=False, scale_factor=-1.0,
-                                        hole_label=hole_label, particle_label=particle_label, start=(max_amp * i))
+            amps[i] += [cluster_operator(k, excitation=False, scale_factor=-1.0,
+                                         hole_label=hole_label, particle_label=particle_label, start=(max_amp * i))
                         for k in cluster_levels]
 
     out = defaultdict(list)
 
-    left_pool = [HamiltonianOperator(1), HamiltonianOperator(2)]
+    left_pool = [hamiltonian_operator(1), hamiltonian_operator(2)]
 
     for i in range(1, nested_level + 1):
         factor = 1.0 / i
 
-        if i == nested_level:
-            max_n_open, min_n_open = max_n_open_final, min_n_open_final
+        max_cu = max_cu_levels[i - 1]
+        min_n_open, max_n_open = n_opens[i - 1]
 
         for left in left_pool:
             for right in amps[i - 1]:

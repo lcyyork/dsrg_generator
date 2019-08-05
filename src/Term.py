@@ -181,6 +181,10 @@ class Term:
         return self._next_index_number
 
     @property
+    def n_body(self):
+        return self.sq_op.n_body
+
+    @property
     def comparison_tuple(self):
         return self.sq_op, self.n_tensors, self.list_of_tensors, abs(self.coeff), self.coeff
 

@@ -122,20 +122,24 @@ def test_almost_eq():
     assert a.coeff + b.coeff == 0
 
 
-def test_lt():
-    pass
+def test_comparision():
+    # sequence: sq_op, number of tensors, tensors, absolute value of coeff, coeff
+    a = Term([make_tensor('H', 'g0,h1', 'g1,p1')], make_sq('g1,p1', 'g0,h1'))
+    b = Term([make_tensor('H', 'g0,h1', 'g1,p1'), make_tensor('t', 'h1', 'p1')], make_sq('g1', 'g0'))
+    assert a > b
 
+    b = Term([make_tensor('H', 'g0,h1,c0', 'g1,p1,v0'), make_tensor('t', 'c0', 'v0')], make_sq('g1,p1', 'g0,h1'))
+    assert a < b
 
-def test_le():
-    pass
+    c = Term([make_tensor('H', 'g0,v0,c0', 'g1,p1,c0'), make_tensor('t', 'h1', 'v0')], make_sq('g1,p1', 'g0,h1'))
+    assert c > b
+    assert c.list_of_tensors > b.list_of_tensors
 
-
-def test_gt():
-    pass
-
-
-def test_ge():
-    pass
+    b = Term.from_term(a, flip_sign=True)
+    c = Term.from_term(a)
+    d = sorted([a, b, c])
+    assert d[0] == b
+    assert d[1] == d[2] == a == c
 
 
 def test_void():
@@ -423,3 +427,15 @@ def test_generate_spin_cases_3():
         assert i in ref
         count += 1
     assert count == len(ref)
+
+
+def test_make_ddca():
+    pass
+
+
+def test_make_excitation():
+    pass
+
+
+def test_make_one_body():
+    pass

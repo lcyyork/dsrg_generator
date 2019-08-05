@@ -1,9 +1,10 @@
 from collections import defaultdict
 from timeit import default_timer as timer
-from src.phys_op_contraction import contract_terms, single_commutator, print_results
 from src.Term import Term, hamiltonian_operator, cluster_operator
 from src.Tensor import Tensor
 from src.SQOperator import SecondQuantizedOperator
+from src.phys_op_contraction import contract_terms, combine_terms
+from src.phys_op_contraction import single_commutator, recursive_single_commutator
 # from src.phys_op_contraction import nested_commutator_ucc
 
 
@@ -54,8 +55,48 @@ def test_single_commutator():
 
     a = single_commutator(h, t2e, for_commutator=True)
     b = single_commutator(h, t2e, for_commutator=False, n_process=4)
-
     assert a == b
+
+
+def test_recursive_single_commutator_1():
+    h = hamiltonian_operator(2)
+    t2e = cluster_operator(2)
+
+    a = recursive_single_commutator([h, t2e], n_process=4)
+    b = single_commutator(h, t2e, for_commutator=True)
+    assert a[1] == b
+
+
+def test_recursive_single_commutator_2():
+    # Jacobi identity [[X, Y], Z] = [X, [Y, Z]] + [Y, [Z, X]] = [[X, Z], Y] + [[Z, Y], X]
+    h = hamiltonian_operator(2)
+
+    t1e = cluster_operator(1, start=4, hole_label='c', particle_label='v')
+    t2e = cluster_operator(2, start=0, hole_label='c', particle_label='v')
+    a = recursive_single_commutator([h, t2e, t1e], max_cu=1, n_process=4)
+
+    t1e = cluster_operator(1, start=0, hole_label='c', particle_label='v')
+    t2e = cluster_operator(2, start=4, hole_label='c', particle_label='v')
+    b = recursive_single_commutator([h, t1e, t2e], max_cu=1, n_process=4)
+
+    assert a[2] == b[2]  # note [t2e, t1e] = 0 for single reference
+
+
+def test_recursive_single_commutator_3():
+    # Jacobi identity [[X, Y], Z] = [X, [Y, Z]] + [Y, [Z, X]] = [[X, Z], Y] + [[Z, Y], X]
+    h = hamiltonian_operator(2)
+
+    t1e = cluster_operator(1, start=4)
+    t2e = cluster_operator(2, start=0)
+    a = recursive_single_commutator([h, t2e, t1e], max_cu=3, n_process=4)
+
+    t1e = cluster_operator(1, start=0)
+    t2e = cluster_operator(2, start=4)
+    b = recursive_single_commutator([h, t1e, t2e], max_cu=3, n_process=4)
+
+    c = recursive_single_commutator([t1e, t2e, h], max_cu=3, n_process=4)
+
+    assert a[2] == combine_terms(b[2] + c[2])
 
 # def test_f_t1():
 #     F = hamiltonian_operator(1)

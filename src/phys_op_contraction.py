@@ -152,6 +152,9 @@ def single_commutator(left, right, max_cu=3, max_n_open=6, min_n_open=0,
     :param n_process: number of processes launched for tensor canonicalization
     :return: a list of contracted canonicalized Term objects
     """
+    if for_commutator and (left.sq_op.is_empty() or right.sq_op.is_empty()):
+        return []
+
     terms = contract_terms([left, right], max_cu, max_n_open, min_n_open, scale_factor,
                            for_commutator, expand_hole, n_process) \
         + contract_terms([right, left], max_cu, max_n_open, min_n_open, -scale_factor,
@@ -182,7 +185,7 @@ def recursive_single_commutator(terms, max_cu=3, max_n_open=6, min_n_open=0, max
 
     out = defaultdict(list)
 
-    for i in range(1, n_nested + 1):
+    for i in range(1, n_nested):
         right = terms[i]
 
         if i == n_nested:

@@ -479,7 +479,7 @@ def compute_operator_contractions_connected(ops_list, max_cu=3, max_n_open=6, mi
 
         n_process = min(n_process, multiprocessing.cpu_count())
         if batch_size == 0:
-            batch_size = int(math.sqrt(len(comp_cats_list)) / n_process)
+            batch_size = int(math.sqrt(len(comp_cats_list)) / n_process) + 1
 
         with multiprocessing.Pool(n_process, maxtasksperchild=1000) as pool:
             tasks = [(process_composite_categorized, (comp_cat, ele_con, compatible, upper_indices_set,

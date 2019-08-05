@@ -3,7 +3,7 @@ from threading import Thread
 from copy import deepcopy
 from collections import defaultdict, Iterable, deque
 from itertools import combinations, product
-from math import factorial
+from math import factorial, sqrt
 from timeit import default_timer as timer
 from sympy.utilities.iterables import multiset_permutations
 from sympy.physics.quantum import Operator, HermitianOperator, Commutator, Dagger
@@ -11,61 +11,16 @@ from sympy.core.power import Pow
 from sympy.core.add import Add
 from sympy.core.mul import Mul
 
-from integer_partition import integer_partition
-from mo_space import space_relation, space_priority
-from Indices import Indices
+from src.helper.integer_partition import integer_partition
+from src.mo_space import space_relation, space_priority
+from src.Indices import Indices
 from src.helper.multiprocess_helper import calculate_star
-from IndicesPair import make_indices_pair
-from SQOperator import make_sqop, SecondQuantizedOperator
-from Tensor import make_tensor_preset, ClusterAmplitude, Hamiltonian, Cumulant
-from Term import Term
-from sqop_contraction import compute_operator_contractions
+from src.SQOperator import SecondQuantizedOperator
+from src.Tensor import ClusterAmplitude, Hamiltonian, Cumulant
+from src.Term import Term
+from src.sqop_contraction import compute_operator_contractions
 # from sqop_contraction import generate_operator_contractions, generate_operator_contractions_new
-from Timer import Timer
-
-
-def HamiltonianOperator(k, start=0, indices_type='spin-orbital'):
-    """
-    Return a Hamiltonian operator.
-    :param k: body level
-    :param start: starting number of indices
-    :param indices_type: indices type
-    :return: a Term object
-    """
-    coeff = factorial(k) ** 2
-    r0, r1, r2 = start, start + k, start + 2 * k
-    tensor = make_tensor_preset("Hamiltonian",
-                                [f"g{i}" for i in range(r1, r2)],
-                                [f"g{i}" for i in range(r0, r1)],
-                                indices_type)
-    sq_op = make_sqop([f"g{i}" for i in range(r0, r1)], [f"g{i}" for i in range(r1, r2)], indices_type)
-    return Term([tensor], sq_op, 1.0 / coeff)
-
-
-def ClusterOperator(k, start=0, excitation=True, name='T', scale_factor=1.0,
-                    hole_label='h', particle_label='p', indices_type='spin-orbital'):
-    """
-    Return a cluster operator.
-    :param k: body level
-    :param start: starting number of indices
-    :param excitation: excitation operator if True
-    :param name: the name of this cluster operator
-    :param scale_factor: the scale factor, maybe useful when doing T - T^+
-    :param hole_label: label used to represent hole indices
-    :param particle_label: label used to represent particle indices
-    :param indices_type: indices type
-    :return: a Term object
-    """
-    coeff = factorial(k) ** 2
-    r0, r1 = start, start + k
-    hole = [f"{hole_label}{i}" for i in range(r0, r1)]
-    particle = [f"{particle_label}{i}" for i in range(r0, r1)]
-    first = particle if excitation else hole
-    second = hole if excitation else particle
-    indices_pair = make_indices_pair(second, first, indices_type)
-    tensor = ClusterAmplitude(indices_pair, name=name)
-    sq_op = make_sqop(first, second, indices_type)
-    return Term([tensor], sq_op, scale_factor / coeff)
+from src.helper.Timer import Timer
 
 
 def multiprocessing_canonicalize_contractions(tensors, sq_op, coeff):
@@ -110,9 +65,10 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
         out = []
         contractions = []
         batch_size = 10000 * max(1, n_process // 2)
+        chunk_size = int(sqrt(batch_size) / n_process) + 1
 
         for batch in compute_operator_contractions(sq_ops_to_be_contracted, max_cu, max_n_open, min_n_open,
-                                                   for_commutator, expand_hole, n_process=1):
+                                                   for_commutator, expand_hole, n_process, batch_size=chunk_size):
             count += len(batch)
             contractions += batch
 

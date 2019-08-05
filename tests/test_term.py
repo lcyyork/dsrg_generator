@@ -11,12 +11,12 @@ make_sq = SecondQuantizedOperator
 
 def test_init():
     indices_type = 'spin-orbital'
-    list_of_tensors = [Tensor.make_tensor('Hamiltonian', "g0,g1,c0", "g2,p0,v0", indices_type),
-                       Tensor.make_tensor('cluster_amplitude', "p0,p1,g3", "a0,h1,a1", indices_type),
-                       Tensor.make_tensor('Kronecker', "v0", "p1", indices_type),
-                       Tensor.make_tensor('cumulant', "h1", "c0", indices_type),
-                       Tensor.make_tensor('cumulant', "g2,a0", "g0,g1", indices_type),
-                       Tensor.make_tensor('cumulant', "a1", "g3", indices_type)]
+    list_of_tensors = [make_tensor('Hamiltonian', "g0,g1,c0", "g2,p0,v0", indices_type),
+                       make_tensor('cluster_amplitude', "p0,p1,g3", "a0,h1,a1", indices_type),
+                       make_tensor('Kronecker', "v0", "p1", indices_type),
+                       make_tensor('cumulant', "h1", "c0", indices_type),
+                       make_tensor('cumulant', "g2,a0", "g0,g1", indices_type),
+                       make_tensor('cumulant', "a1", "g3", indices_type)]
     sq_op = SecondQuantizedOperator.make_empty(indices_type)
     a = Term(list_of_tensors, sq_op)
     print(a)
@@ -50,8 +50,8 @@ def test_init():
     print(a)
     print(a.canonicalize_sympy())
 
-    # for i in a.canonicalize().generate_spin_cases_naive():
-    #     print(i)
+    for i in a.canonicalize().generate_spin_cases_naive():
+        print(i)
 
 
 def test_init_2():
@@ -300,3 +300,146 @@ def test_canonicalize_3():
                 make_tensor('L', 'a1', 'a0', 'sa'), make_tensor('L', 'A1', 'A0', 'sa')],
                make_sq('g0, G0', 'h0, H0', 'sa'))
     assert ref == a.canonicalize()
+
+
+def test_canonicalize_4():
+    list_of_tensors = [make_tensor('Hamiltonian', "g0,g1,c0", "g2,p0,v0"),
+                       make_tensor('cluster_amplitude', "p0,p1,g3", "a0,h1,a1"),
+                       make_tensor('Kronecker', "v0", "p1"),
+                       make_tensor('cumulant', "h1", "c0"), make_tensor('cumulant', "a1", "g3"),
+                       make_tensor('cumulant', "g2,a0", "g0,g1")]
+    a = Term(list_of_tensors, SecondQuantizedOperator.make_empty())
+
+    ref = Term([make_tensor('H', "c0,a1,a2", "p0,v0,a0"), make_tensor('t', "c0,a4,a5", "p0,v0,a3"),
+                make_tensor('L', "a4", "a3"), make_tensor('L', "a1,a2", "a0,a5")],
+               SecondQuantizedOperator.make_empty())
+    assert a.canonicalize() == ref
+
+
+def test_generate_spin_cases_1():
+    a = Term([make_tensor('H', 'g0,g1', 'g2,g3')], make_sq('g2,g3', 'g0,g1'))
+    ref = {Term([make_tensor('H', 'g2,g3', 'g0,g1', 'si')], make_sq('g2,g3', 'g0,g1', 'si')),
+           Term([make_tensor('H', 'g1,G1', 'g0,G0', 'si')], make_sq('g1,G1', 'g0,G0', 'si')),
+           Term([make_tensor('H', 'G2,G3', 'G0,G1', 'si')], make_sq('G2,G3', 'G0,G1', 'si'))}
+    for i in a.generate_spin_cases_naive():
+        assert i in ref
+
+
+def test_generate_spin_cases_2():
+    from collections import defaultdict
+
+    # -0.25 * H^{aw}_{xy} * T^{uv}_{az} * L^{xyz}_{uvw}
+    a = Term([make_tensor('H', 'a1,a2', 'p0,a0'), make_tensor('t', 'a4,a5', 'p0,a3'),
+              make_tensor('L', 'a1,a2,a3', 'a0,a4,a5')],
+             SecondQuantizedOperator.make_empty(), -0.25)
+
+    spin_combined = {}
+    spin_coeff = defaultdict(list)
+    for term in a.generate_spin_cases_naive():
+        name = term.hash_term()
+        spin_coeff[name].append(term.coeff)
+        spin_combined[name] = term
+
+    for name, term in spin_combined.items():
+        term.coeff = sum(spin_coeff[name])
+        if abs(term.coeff) < 1.0e-15:
+            spin_combined.pop(name)
+
+    ref = {
+        Term([make_tensor('H', 'a1,a2', 'p0,a0', 'si'), make_tensor('t', 'a4,a5', 'p0,a3', 'si'),
+              make_tensor('L', 'a1,a2,a3', 'a0,a4,a5', 'si')], SecondQuantizedOperator.make_empty('si'), -0.25),
+        Term([make_tensor('H', 'A1,A2', 'P0,A0', 'si'), make_tensor('t', 'A4,A5', 'P0,A3', 'si'),
+              make_tensor('L', 'A1,A2,A3', 'A0,A4,A5', 'si')], SecondQuantizedOperator.make_empty('si'), -0.25),
+        Term([make_tensor('H', 'a1,A2', 'p0,A0', 'si'), make_tensor('t', 'a4,a5', 'p0,a3', 'si'),
+              make_tensor('L', 'a1,A2,a3', 'A0,a4,a5', 'si')], SecondQuantizedOperator.make_empty('si'),
+             -0.5).canonicalize(),
+        Term([make_tensor('H', 'a1,a2', 'p0,a0', 'si'), make_tensor('t', 'a4,A5', 'p0,A3', 'si'),
+              make_tensor('L', 'a1,a2,A3', 'a0,a4,A5', 'si')], SecondQuantizedOperator.make_empty('si'),
+             -0.5).canonicalize(),
+        Term([make_tensor('H', 'A1,a2', 'P0,a0', 'si'), make_tensor('t', 'A4,a5', 'P0,a3', 'si'),
+              make_tensor('L', 'A1,a2,a3', 'a0,A4,a5', 'si')], SecondQuantizedOperator.make_empty('si'),
+             -1).canonicalize(),
+        Term([make_tensor('H', 'a1,A2', 'P0,a0', 'si'), make_tensor('t', 'A4,A5', 'P0,A3', 'si'),
+              make_tensor('L', 'a1,A2,A3', 'a0,A4,A5', 'si')], SecondQuantizedOperator.make_empty('si'),
+             -0.5).canonicalize(),
+        Term([make_tensor('H', 'A1,A2', 'P0,A0', 'si'), make_tensor('t', 'A4,a5', 'P0,a3', 'si'),
+              make_tensor('L', 'A1,A2,a3', 'A0,A4,a5', 'si')], SecondQuantizedOperator.make_empty('si'),
+             -0.5).canonicalize(),
+        Term([make_tensor('H', 'a1,A2', 'p0,A0', 'si'), make_tensor('t', 'a4,A5', 'p0,A3', 'si'),
+              make_tensor('L', 'a1,A2,A3', 'A0,a4,A5', 'si')], SecondQuantizedOperator.make_empty('si'),
+             -1).canonicalize(),
+    }
+
+    for i in spin_combined.values():
+        assert i in ref
+    assert len(spin_combined) == len(ref)
+
+
+def test_generate_spin_cases_3():
+    list_of_tensors = [make_tensor('H', "v0,c0", "v1,c1"), make_tensor('t', "v1", "c2"),
+                       make_tensor('t', "v2,v3", "c0,c3"), make_tensor('t', "c2,c3", "v0,v3")]
+    a = Term(list_of_tensors, make_sq("c1", "v2"))
+
+    ac = Term([make_tensor('H', 'v2,c1', 'v1,c0'), make_tensor('t', 'c2', 'v1'),
+               make_tensor('t', 'c1,c3', 'v0,v3'), make_tensor('t', 'c2,c3', 'v2,v3')],
+              make_sq("c0", "v0"))
+    assert a.canonicalize() == ac
+
+    i_type = 'si'
+    ref = [Term([make_tensor('H', 'v2,c1', 'v1,c0', i_type),
+                 make_tensor('t', 'c2', 'v1', i_type),
+                 make_tensor('t', 'c1,c3', 'v0,v3', i_type),
+                 make_tensor('t', 'c2,c3', 'v2,v3', i_type)],
+                make_sq("c0", "v0", i_type)),
+           Term([make_tensor('H', 'v2,c1', 'v1,c0', i_type),
+                 make_tensor('t', 'c2', 'v1', i_type),
+                 make_tensor('t', 'c1,C3', 'v0,V3', i_type),
+                 make_tensor('t', 'c2,C3', 'v2,V3', i_type)],
+                make_sq("c0", "v0", i_type)).canonicalize(),
+           Term([make_tensor('H', 'v2,C1', 'V1,c0', i_type),
+                 make_tensor('t', 'C2', 'V1', i_type),
+                 make_tensor('t', 'C1,c3', 'v0,V3', i_type),
+                 make_tensor('t', 'C2,c3', 'v2,V3', i_type)],
+                make_sq("c0", "v0", i_type)).canonicalize(),
+           Term([make_tensor('H', 'V2,c1', 'V1,c0', i_type),
+                 make_tensor('t', 'C2', 'V1', i_type),
+                 make_tensor('t', 'c1,c3', 'v0,v3', i_type),
+                 make_tensor('t', 'C2,c3', 'V2,v3', i_type)],
+                make_sq("c0", "v0", i_type)).canonicalize(),
+           Term([make_tensor('H', 'V2,c1', 'V1,c0', i_type),
+                 make_tensor('t', 'C2', 'V1', i_type),
+                 make_tensor('t', 'c1,C3', 'v0,V3', i_type),
+                 make_tensor('t', 'C2,C3', 'V2,V3', i_type)],
+                make_sq("c0", "v0", i_type)).canonicalize(),
+           Term([make_tensor('H', 'V2,C1', 'V1,C0', i_type),
+                 make_tensor('t', 'C2', 'V1', i_type),
+                 make_tensor('t', 'C1,C3', 'V0,V3', i_type),
+                 make_tensor('t', 'C2,C3', 'V2,V3', i_type)],
+                make_sq("C0", "V0", i_type)),
+           Term([make_tensor('H', 'V2,C1', 'V1,C0', i_type),
+                 make_tensor('t', 'C2', 'V1', i_type),
+                 make_tensor('t', 'C1,c3', 'V0,v3', i_type),
+                 make_tensor('t', 'C2,c3', 'V2,v3', i_type)],
+                make_sq("C0", "V0", i_type)).canonicalize(),
+           Term([make_tensor('H', 'V2,c1', 'v1,C0', i_type),
+                 make_tensor('t', 'c2', 'v1', i_type),
+                 make_tensor('t', 'c1,C3', 'V0,v3', i_type),
+                 make_tensor('t', 'c2,C3', 'V2,v3', i_type)],
+                make_sq("C0", "V0", i_type)).canonicalize(),
+           Term([make_tensor('H', 'v2,C1', 'v1,C0', i_type),
+                 make_tensor('t', 'c2', 'v1', i_type),
+                 make_tensor('t', 'C1,c3', 'V0,v3', i_type),
+                 make_tensor('t', 'c2,c3', 'v2,v3', i_type)],
+                make_sq("C0", "V0", i_type)).canonicalize(),
+           Term([make_tensor('H', 'v2,C1', 'v1,C0', i_type),
+                 make_tensor('t', 'c2', 'v1', i_type),
+                 make_tensor('t', 'C1,C3', 'V0,V3', i_type),
+                 make_tensor('t', 'c2,C3', 'v2,V3', i_type)],
+                make_sq("C0", "V0", i_type)).canonicalize(),
+           ]
+
+    count = 0
+    for i in ac.generate_spin_cases_naive():
+        assert i in ref
+        count += 1
+    assert count == len(ref)

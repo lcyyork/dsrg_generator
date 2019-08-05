@@ -175,6 +175,12 @@ class Term:
     def __repr__(self):
         return self.latex(permute_format=False)
 
+    def __hash__(self):
+        return hash(str(self))
+
+    def hash_term(self):
+        return " ".join(str(tensor) for tensor in self.list_of_tensors) + f" {self.sq_op}"
+
     def is_possible_excitation(self):
         """
         Test if this term is a possible excitation operator.
@@ -306,7 +312,7 @@ class Term:
         """
         cre_ops = self.sq_op.cre_ops
         ann_ops = self.sq_op.ann_ops
-        tensor_indices = [set(tensor.indices) for tensor in self.list_of_tensors]
+        tensor_indices = [set(tensor.indices()) for tensor in self.list_of_tensors]
 
         return self._perm_part_atomic(cre_ops, tensor_indices), self._perm_part_atomic(ann_ops, tensor_indices)
 
@@ -883,30 +889,14 @@ class Term:
         if self.sq_op.indices_type is not IndicesSpinOrbital:
             raise TypeError(f"Invalid indices, expected 'IndicesSpinOrbital', given '{self.sq_op.indices_type}'.")
 
-        terms = []
-
         for pairs in product(self.sq_op.generate_spin_cases(),
                              *[i.generate_spin_cases() for i in self.list_of_tensors]):
             try:
                 sq_op = pairs[0]
                 list_of_tensors = list(pairs[1:])
-                terms.append(Term(list_of_tensors, sq_op, self.coeff).canonicalize_sympy())
+                yield Term(list_of_tensors, sq_op, self.coeff).canonicalize_sympy()
             except ValueError:
                 pass
-
-        if len(terms) == 0:
-            return terms
-        else:
-            terms = sorted(terms)
-
-        out = [terms[0]]
-        for term in terms[1:]:
-            if term.almost_equal(out[-1]):
-                out[-1].coeff += term.coeff
-            else:
-                out.append(term)
-
-        return out
 
     def make_excitation(self, single_ref):
         """

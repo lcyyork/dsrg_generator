@@ -17,7 +17,7 @@ from src.Indices import Indices
 from src.helper.multiprocess_helper import calculate_star
 from src.SQOperator import SecondQuantizedOperator
 from src.Tensor import ClusterAmplitude, HamiltonianTensor, Cumulant
-from src.Term import Term
+from src.Term import Term, cluster_operator, hamiltonian_operator
 from src.sqop_contraction import compute_operator_contractions
 # from sqop_contraction import generate_operator_contractions, generate_operator_contractions_new
 from src.helper.Timer import Timer
@@ -162,16 +162,12 @@ def single_commutator(left, right, max_cu=3, max_n_open=6, min_n_open=0,
     return combine_terms(terms)
 
 
-def recursive_single_commutator(terms, max_cu=3, max_n_open=6, min_n_open=0, max_n_open_final=6, min_n_open_final=0,
-                                for_commutator=True, expand_hole=True, n_process=1):
+def recursive_single_commutator(terms, max_cu_levels, n_opens, for_commutator=True, expand_hole=True, n_process=1):
     """
     Compute nested commutators using recursive single commutator formalism.
     :param terms: a list of terms, computed as [[...[[term_0, term_1], term_2], ...], term_k]
-    :param max_cu: max level of cumulant
-    :param max_n_open: max number of open indices for contractions of each single commutator
-    :param min_n_open: min number of open indices for contractions of each single commutator
-    :param max_n_open_final: max number of open indices for return
-    :param min_n_open_final: min number of open indices for return
+    :param max_cu_levels: a list of integers for max cumulant level of each level of commutator
+    :param n_opens: a list of tuple [(min, max)] for numbers of open indices of each level of commutator
     :param for_commutator: compute only non-zero terms for commutators if True
     :param expand_hole: expand HoleDensity to (Kronecker - Cumulant) if True
     :param n_process: number of processes launched for tensor canonicalization
@@ -181,6 +177,20 @@ def recursive_single_commutator(terms, max_cu=3, max_n_open=6, min_n_open=0, max
     if n_nested < 2:
         raise ValueError("Need to have at least two terms for a valid commutator.")
 
+    if isinstance(max_cu_levels, int):
+        max_cu_levels = [max_cu_levels] * (n_nested - 1)
+    if len(max_cu_levels) != n_nested - 1:
+        raise ValueError(f"Inconsistent size of max_cu_levels ({max_cu_levels}), required {n_nested - 1}")
+
+    if isinstance(n_opens, tuple):
+        if any(not isinstance(i, int) for i in n_opens):
+            raise ValueError(f"Invalid n_opens ({n_opens}), required format [(min, max), ...]")
+        if len(n_opens) != 2:
+            raise ValueError(f"Invalid n_opens ({n_opens}), tuple must contain only min and max")
+        n_opens = [n_opens] * (n_nested - 1)
+    if len(n_opens) != n_nested - 1:
+        raise ValueError(f"Inconsistent size of n_opens ({n_opens}), required {n_nested - 1}")
+
     left_pool = [terms[0]]
 
     out = defaultdict(list)
@@ -188,8 +198,8 @@ def recursive_single_commutator(terms, max_cu=3, max_n_open=6, min_n_open=0, max
     for i in range(1, n_nested):
         right = terms[i]
 
-        if i == n_nested:
-            max_n_open, min_n_open = max_n_open_final, min_n_open_final
+        max_cu = max_cu_levels[i - 1]
+        min_n_open, max_n_open = n_opens[i - 1]
 
         for left in left_pool:
             out[i] += single_commutator(left, right, max_cu, max_n_open, min_n_open,
@@ -229,8 +239,8 @@ def bch_cc_rsc(nested_level, cluster_levels, max_cu=3, max_n_open=6, min_n_open=
     particle_label = 'v' if single_reference else 'p'
 
     max_amp = max(cluster_levels)
-    amps = [[ClusterOperator(k, hole_label=hole_label, particle_label=particle_label,
-                             start=(max_amp * i)) for k in cluster_levels]
+    amps = [[cluster_operator(k, hole_label=hole_label, particle_label=particle_label,
+                              start=(max_amp * i)) for k in cluster_levels]
             for i in range(nested_level)]
     if unitary:
         for i in range(nested_level):

@@ -62,7 +62,7 @@ def test_recursive_single_commutator_1():
     h = hamiltonian_operator(2)
     t2e = cluster_operator(2)
 
-    a = recursive_single_commutator([h, t2e], n_process=4)
+    a = recursive_single_commutator([h, t2e], 3, (0, 6), n_process=4)
     b = single_commutator(h, t2e, for_commutator=True)
     assert a[1] == b
 
@@ -73,11 +73,11 @@ def test_recursive_single_commutator_2():
 
     t1e = cluster_operator(1, start=4, hole_label='c', particle_label='v')
     t2e = cluster_operator(2, start=0, hole_label='c', particle_label='v')
-    a = recursive_single_commutator([h, t2e, t1e], max_cu=1, n_process=4)
+    a = recursive_single_commutator([h, t2e, t1e], 1, (0, 6), n_process=4)
 
     t1e = cluster_operator(1, start=0, hole_label='c', particle_label='v')
     t2e = cluster_operator(2, start=4, hole_label='c', particle_label='v')
-    b = recursive_single_commutator([h, t1e, t2e], max_cu=1, n_process=4)
+    b = recursive_single_commutator([h, t1e, t2e], 1, (0, 6), n_process=4)
 
     assert a[2] == b[2]  # note [t2e, t1e] = 0 for single reference
 
@@ -88,13 +88,13 @@ def test_recursive_single_commutator_3():
 
     t1e = cluster_operator(1, start=4)
     t2e = cluster_operator(2, start=0)
-    a = recursive_single_commutator([h, t2e, t1e], max_cu=3, n_process=4)
+    a = recursive_single_commutator([h, t2e, t1e], 3, (0, 6), n_process=4)
 
     t1e = cluster_operator(1, start=0)
     t2e = cluster_operator(2, start=4)
-    b = recursive_single_commutator([h, t1e, t2e], max_cu=3, n_process=4)
+    b = recursive_single_commutator([h, t1e, t2e], [2, 3], [(0, 4), (0, 6)], n_process=4)
 
-    c = recursive_single_commutator([t1e, t2e, h], max_cu=3, n_process=4)
+    c = recursive_single_commutator([t1e, t2e, h], [2, 3], (0, 6), n_process=4)
 
     assert a[2] == combine_terms(b[2] + c[2])
 

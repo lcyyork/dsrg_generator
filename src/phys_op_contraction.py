@@ -286,53 +286,18 @@ def bch_cc_rsc(nested_level, cluster_levels, max_cu_levels, n_opens, for_commuta
     return out
 
 
-# This function is not doing consistent things as described.
-# def nested_commutator_lct(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0,
-#                           for_commutator=True, expand_hole=True, n_process=1):
-#     """
-#     Compute the nested commutator of terms, i.e. [[...[[term_0, term_1], term_2], ...], term_k].
-#     :param terms: a list of terms
-#     :param max_cu: max level of cumulant
-#     :param max_n_open: max number of open indices for contractions of each single commutator
-#     :param min_n_open: min number of open indices for contractions of each single commutator
-#     :param scale_factor: a scaling factor for the results
-#     :param expand_hole: expand HoleDensity to Kronecker - Cumulant if True
-#     :param n_process: number of processes launched for tensor canonicalization
-#     :return: a list of contracted canonicalized Term objects
-#     """
-#     if len(terms) == 0:
-#         raise ValueError("size of terms cannot be zero.")
-#
-#     if len(terms) == 1:
-#         return terms
-#
-#     def commutator_recursive(chosen_terms, unchosen_terms, sign, temp_out):
-#         if len(unchosen_terms) == 0:
-#             terms_local = contract_terms(chosen_terms, max_cu, max_n_open, min_n_open,
-#                                          sign * scale_factor, for_commutator, expand_hole, n_process)
-#             temp_out += combine_terms(terms_local)
-#         else:
-#             commutator_recursive(chosen_terms + [unchosen_terms[0]], unchosen_terms[1:], sign, temp_out)
-#             commutator_recursive([unchosen_terms[0]] + chosen_terms, unchosen_terms[1:], -sign, temp_out)
-#
-#     out = []
-#     commutator_recursive(terms[:1], terms[1:], 1, out)
-#
-#     return combine_terms(out)
-
-
-def sympy_nested_commutator_recursive(level, A, B):
+def sympy_nested_commutator_recursive(level, a, b):
     """
     Compute nested commutator of type [[...[[A, B], B], ...], B]
     :param level: the level of nested commutator
-    :param A: Operator A
-    :param B: Operator B
+    :param a: Operator A
+    :param b: Operator B
     :return: commutator of type Add
     """
     if level <= 1:
-        return Commutator(A, B)
+        return Commutator(a, b)
     for i in range(level)[::-1]:
-        return Commutator(sympy_nested_commutator_recursive(i, A, B), B)
+        return Commutator(sympy_nested_commutator_recursive(i, a, b), b)
 
 
 def nested_commutator_cc(nested_level, cluster_levels, max_cu=3, max_n_open=6, min_n_open=0,
@@ -391,11 +356,11 @@ def nested_commutator_cc(nested_level, cluster_levels, max_cu=3, max_n_open=6, m
         for name in tensor_names:
             real_name, n_body = name[0], int(name[1:])
             if real_name == 'T' or real_name == 'X':
-                list_of_terms.append(ClusterOperator(n_body, start=start, excitation=(real_name == 'T'),
-                                                     hole_label=hole_label, particle_label=particle_label))
+                list_of_terms.append(cluster_operator(n_body, start=start, excitation=(real_name == 'T'),
+                                                      hole_label=hole_label, particle_label=particle_label))
                 start += n_body
             else:
-                list_of_terms.append(HamiltonianOperator(n_body))
+                list_of_terms.append(hamiltonian_operator(n_body))
 
         out += contract_terms(list_of_terms, max_cu, max_n_open, min_n_open, factor,
                               for_commutator, expand_hole, n_process)

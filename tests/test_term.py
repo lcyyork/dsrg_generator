@@ -9,57 +9,37 @@ make_tensor = Tensor.make_tensor
 make_sq = SecondQuantizedOperator
 
 
-def test_init():
-    indices_type = 'spin-orbital'
-    list_of_tensors = [make_tensor('Hamiltonian', "g0,g1,c0", "g2,p0,v0", indices_type),
-                       make_tensor('cluster_amplitude', "p0,p1,g3", "a0,h1,a1", indices_type),
-                       make_tensor('Kronecker', "v0", "p1", indices_type),
-                       make_tensor('cumulant', "h1", "c0", indices_type),
-                       make_tensor('cumulant', "g2,a0", "g0,g1", indices_type),
-                       make_tensor('cumulant', "a1", "g3", indices_type)]
-    sq_op = SecondQuantizedOperator.make_empty(indices_type)
-    a = Term(list_of_tensors, sq_op)
-    print(a)
-    # print(a.next_index_number)
-    # print(a._downgrade_cumulant_indices())
-    # print(a)
-    # print(a.next_index_number)
-    # a._remove_kronecker_delta()
-    # print(a)
-    # print(a.next_index_number)
-    a.simplify(simplify_core_cumulant=True)
-    print(a)
-    print(a.next_index_number)
-
-    # for row in a.build_adjacency_matrix():
-    #     print(row)
-    # for row in a.order_tensors():
-    #     print(row)
-    print(a)
-    print(a.canonicalize_sympy())
-
-    list_of_tensors = [Tensor.make_tensor('Hamiltonian', "v0,c0", "v1,c1", indices_type),
-                       Tensor.make_tensor('cluster_amplitude', "v1", "c2", indices_type),
-                       Tensor.make_tensor('cluster_amplitude', "v2,v3", "c0,c3", indices_type),
-                       Tensor.make_tensor('cluster_amplitude', "c2,c3", "v0,v3", indices_type)]
-    sq_op = SecondQuantizedOperator("c1", "v2", indices_type)
-
-    a = Term(list_of_tensors, sq_op)
-    # print(a.canonicalize())
-
-    print(a)
-    print(a.canonicalize_sympy())
-
-    for i in a.canonicalize().generate_spin_cases_naive():
-        print(i)
+def test_init_1():
+    # coeff cannot be converted to float
+    with pytest.raises(ValueError):
+        assert Term([], [], 'a')
 
 
 def test_init_2():
-    a = Term([make_tensor('H', 'g0', 'g0')], make_sq("g0", "g0"))
-    print(a)
+    # sq_op is not a SecondQuantizedOperator
+    with pytest.raises(TypeError):
+        assert Term([], [], '1')
 
-    b = Term.from_term(a, True)
-    print(b)
+
+def test_init_3():
+    # inconsistent indices type
+    with pytest.raises(TypeError):
+        assert Term([make_tensor('H', 'g0', 'g1')], make_sq('g1', 'g0', 'si'))
+
+
+def test_init_4():
+    # indices not appear in pairs
+    with pytest.raises(ValueError):
+        assert Term([make_tensor('H', 'c0', 'g1'), make_tensor('t', 'c0', 't0')], make_sq('t0', 't1'))
+
+
+def test_init_5():
+    # OK to have diagonal indices, but attributes not fully functional
+    a = Term([make_tensor('H', 'g0', 'g0')], make_sq("g0", "g0"))
+    b = Term.from_term(a, flip_sign=True)
+    assert a.coeff == -b.coeff
+    b.coeff = 1
+    assert a == b
 
 
 def test_latex_1():

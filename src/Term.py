@@ -12,6 +12,51 @@ from src.Tensor import Tensor, Cumulant, ClusterAmplitude, Kronecker
 from src.SQOperator import SecondQuantizedOperator
 
 
+def hamiltonian_operator(k, start=0, indices_type='spin-orbital'):
+    """
+    Return a Hamiltonian operator.
+    :param k: body level
+    :param start: starting number of indices
+    :param indices_type: indices type
+    :return: a Term object
+    """
+    coeff = factorial(k) ** 2
+    r0, r1, r2 = start, start + k, start + 2 * k
+    tensor = Tensor.make_tensor("Hamiltonian",
+                                [f"g{i}" for i in range(r1, r2)],
+                                [f"g{i}" for i in range(r0, r1)],
+                                indices_type)
+    sq_op = SecondQuantizedOperator([f"g{i}" for i in range(r0, r1)],
+                                    [f"g{i}" for i in range(r1, r2)],
+                                    indices_type)
+    return Term([tensor], sq_op, 1.0 / coeff)
+
+
+def cluster_operator(k, start=0, excitation=True, name='T', scale_factor=1.0,
+                     hole_label='h', particle_label='p', indices_type='spin-orbital'):
+    """
+    Return a cluster operator.
+    :param k: body level
+    :param start: starting number of indices
+    :param excitation: excitation operator if True
+    :param name: the name of this cluster operator
+    :param scale_factor: the scale factor, maybe useful when doing T - T^+
+    :param hole_label: label used to represent hole indices
+    :param particle_label: label used to represent particle indices
+    :param indices_type: indices type
+    :return: a Term object
+    """
+    coeff = factorial(k) ** 2
+    r0, r1 = start, start + k
+    hole = [f"{hole_label}{i}" for i in range(r0, r1)]
+    particle = [f"{particle_label}{i}" for i in range(r0, r1)]
+    first = particle if excitation else hole
+    second = hole if excitation else particle
+    tensor = Tensor.make_tensor('t', second, first, indices_type, name)
+    sq_op = SecondQuantizedOperator(first, second, indices_type)
+    return Term([tensor], sq_op, scale_factor / coeff)
+
+
 class Term:
     """
     The Term class.
@@ -19,7 +64,7 @@ class Term:
     A term consists of three parts: a list of tensors, a second-quantized operator, and a coefficient.
     For a fully contracted term, the second-quantized operator should be an empty SecondQuantizedOperator object.
     The major functionality is to simplify the results from operator contractions and bring it to canonical form.
-    Note, "canonicalize" is not fully functional for a term containing tensors with diagonal indices.
+    Note, "canonicalize" is not yet functional for a term containing tensors with diagonal indices.
     An example of such tensors is the Fock matrix in the canonical orbital basis.
     """
 

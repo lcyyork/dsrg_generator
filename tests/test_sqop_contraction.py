@@ -354,7 +354,7 @@ def test_contraction_categorized_4():
                                                     n_process=4, batch_size=0)
          for i in con]
     print(f"Time to compute T2^+ * H * T2 * T2: {timer() - start:.3f} s")
-    assert len(a) == 56128  # note that there are 72832 contractions in total
+    assert len(a) == 56128  # note that there are 72832 contractions in total from test_contraction_4()
 
 
 def test_expand_hole():

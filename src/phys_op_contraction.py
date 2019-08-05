@@ -16,7 +16,7 @@ from src.mo_space import space_relation, space_priority
 from src.Indices import Indices
 from src.helper.multiprocess_helper import calculate_star
 from src.SQOperator import SecondQuantizedOperator
-from src.Tensor import ClusterAmplitude, Hamiltonian, Cumulant
+from src.Tensor import ClusterAmplitude, HamiltonianTensor, Cumulant
 from src.Term import Term
 from src.sqop_contraction import compute_operator_contractions
 # from sqop_contraction import generate_operator_contractions, generate_operator_contractions_new
@@ -68,24 +68,25 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
         chunk_size = int(sqrt(batch_size) / n_process) + 1
 
         for batch in compute_operator_contractions(sq_ops_to_be_contracted, max_cu, max_n_open, min_n_open,
-                                                   for_commutator, expand_hole, n_process, batch_size=chunk_size):
+                                                   for_commutator, expand_hole, n_process, batch_size=0):
             count += len(batch)
             contractions += batch
 
             if count < batch_size:
                 continue
 
-            out += canonicalize_contractions_batch(n_process, contractions, tensors, coeff)
+            out += canonicalize_contractions_batch(n_process, contractions, tensors, coeff, True, chunk_size)
             contractions = []
             count = 0
 
-        n_process = max(1, len(contractions) // (batch_size // n_process))
-        out += canonicalize_contractions_batch(n_process, contractions, tensors, coeff, False)
+        # n_process = max(1, len(contractions) // (batch_size // n_process))
+        chunk_size = int(sqrt(len(contractions)) / n_process) + 1
+        out += canonicalize_contractions_batch(n_process, contractions, tensors, coeff, False, chunk_size)
 
         return combine_terms(out)
 
 
-def canonicalize_contractions_batch(n_process, contractions, tensors, coeff, simplify=True):
+def canonicalize_contractions_batch(n_process, contractions, tensors, coeff, simplify, chunk_size):
     """
     Canonicalize a batch of contractions
     :param n_process: number of processes launched for tensor canonicalization
@@ -93,6 +94,7 @@ def canonicalize_contractions_batch(n_process, contractions, tensors, coeff, sim
     :param tensors: a list of tensors
     :param coeff: a scale factor for all contractions
     :param simplify: combine similar terms if True
+    :param chunk_size: the chunk size for multiprocessing
     :return: a list of simplified canonicalized terms
     """
     if n_process == 1:
@@ -102,7 +104,7 @@ def canonicalize_contractions_batch(n_process, contractions, tensors, coeff, sim
         with multiprocessing.Pool(n_process, maxtasksperchild=1000) as pool:
             tasks = [(multiprocessing_canonicalize_contractions, (tensors + densities, sq_op, sign * coeff))
                      for sign, densities, sq_op in contractions]
-            imap_unordered_it = pool.imap_unordered(calculate_star, tasks)
+            imap_unordered_it = pool.imap_unordered(calculate_star, tasks, chunksize=chunk_size)
             temp = [x for x in imap_unordered_it]
     return combine_terms(temp) if simplify else temp
 
@@ -119,21 +121,19 @@ def combine_terms(terms):
     if len(terms) == 0:
         return []
 
-    tensors_to_coeff = defaultdict(list)
-    tensors_to_term = {}
+    terms_to_coeff = defaultdict(list)
+    terms_dict = {}
 
     for term in terms:
-        name = " ".join(str(tensor) for tensor in term.list_of_tensors) + f" {term.sq_op}"
-        tensors_to_term[name] = term
-        tensors_to_coeff[name].append(term.coeff)
+        name = term.hash_term()
+        terms_dict[name] = term
+        terms_to_coeff[name].append(term.coeff)
 
-    out = []
-    for name, term in tensors_to_term.items():
-        term.coeff = sum(tensors_to_coeff[name])
+    for name, term in terms_dict.items():
+        term.coeff = sum(terms_to_coeff[name])
         if abs(term.coeff) < 1.0e-15:
-            continue
-        out.append(term)
-    return sorted(out)
+            terms_dict.pop(name)
+    return sorted(terms_dict.values())
 
 
 def single_commutator(left, right, max_cu=3, max_n_open=6, min_n_open=0,

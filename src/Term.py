@@ -971,7 +971,7 @@ class Term:
             replacement[i] = self._generate_next_index(s, next_index_number)
 
         for tensor in self.list_of_tensors:
-            for i in tensor.indices:
+            for i in tensor.indices():
                 if i not in replacement:
                     replacement[i] = self._generate_next_index(i.space, next_index_number)
 
@@ -1005,7 +1005,7 @@ class Term:
             replacement[cre_index] = self._generate_next_index(s, next_index_number)
 
             for tensor in self.list_of_tensors:
-                for i in tensor.indices:
+                for i in tensor.indices():
                     if i not in replacement:
                         replacement[i] = self._generate_next_index(i.space, next_index_number)
 

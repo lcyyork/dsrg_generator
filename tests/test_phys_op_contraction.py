@@ -5,7 +5,7 @@ from src.Tensor import Tensor
 from src.SQOperator import SecondQuantizedOperator
 from src.phys_op_contraction import contract_terms, combine_terms
 from src.phys_op_contraction import single_commutator, recursive_single_commutator
-from src.phys_op_contraction import bch_cc_rsc
+from src.phys_op_contraction import bch_cc_rsc, nested_commutator_cc
 
 
 make_tensor = Tensor.make_tensor
@@ -121,6 +121,37 @@ def test_bch_cc_rsc_1():
                     make_sq('v0,v1', 'c0,c1'), -0.25)]
     for i in samples:
         assert i in r
+
+
+def test_nested_cc_1():
+    # single-reference CCSD equations
+    a = [i for n in range(1, 5)
+         for i in nested_commutator_cc(n, [1, 2], 1, max_n_open=4, single_reference=True)]
+
+    # comparing to CCSD with recursive single commutator
+    b = bch_cc_rsc(4, [1, 2], 1, (0, 4), single_reference=True, unitary=False)
+    c = sorted(i for n, terms in b.items() for i in terms)
+    assert len(a) == len(c)
+
+    d = combine_terms(a + [Term.from_term(i, flip_sign=True) for i in c])
+    ref = [Term([make_tensor('H', 'v1,v2', 'g0,c2'), make_tensor('t', 'c2', 'v1'),
+                 make_tensor('t', 'c0,c1', 'v0,v2')], make_sq('g0,v0', 'c0,c1'), 0.25),
+           Term([make_tensor('H', 'c1,c2', 'g0,v2'), make_tensor('t', 'c1', 'v2'),
+                 make_tensor('t', 'c0,c2', 'v0,v1')], make_sq('v0,v1', 'g0,c0'), -0.25),
+           Term([make_tensor('H', 'c2,c3', 'v2,v3'), make_tensor('t', 'c0,c1', 'v0,v2'),
+                 make_tensor('t', 'c2,c3', 'v1,v3')], make_sq('v0,v1', 'c0,c1'), -0.125),
+           Term([make_tensor('H', 'c2,c3', 'v2,v3'), make_tensor('t', 'c0,c2', 'v0,v1'),
+                 make_tensor('t', 'c1,c3', 'v2,v3')], make_sq('v0,v1', 'c0,c1'), -0.125),
+           Term([make_tensor('H', 'c2,c3', 'v2,v3'), make_tensor('t', 'c0', 'v2'),
+                 make_tensor('t', 'c2', 'v3'), make_tensor('t', 'c1,c3', 'v0,v1')],
+                make_sq('v0,v1', 'c0,c1'), -0.25),
+           Term([make_tensor('H', 'c2,c3', 'v2,v3'), make_tensor('t', 'c2', 'v0'),
+                 make_tensor('t', 'c3', 'v2'), make_tensor('t', 'c0,c1', 'v1,v3')],
+                make_sq('v0,v1', 'c0,c1'), -0.25)]
+    for i in d:
+        assert i in ref
+    assert len(d) == len(ref)
+
 
 
 # def test_contraction_categorized_5():

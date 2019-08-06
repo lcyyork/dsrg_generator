@@ -1,7 +1,7 @@
 from collections import defaultdict
 from fractions import Fraction
 from itertools import product, groupby, accumulate
-from math import factorial
+from math import factorial, isclose
 from sympy.combinatorics.tensor_can import canonicalize
 from sympy.combinatorics import Permutation
 
@@ -30,6 +30,24 @@ def hamiltonian_operator(k, start=0, indices_type='spin-orbital'):
                                     [f"g{i}" for i in range(r1, r2)],
                                     indices_type)
     return Term([tensor], sq_op, 1.0 / coeff)
+
+
+def diagonal_fock_operator(single_reference):
+    """
+    Return a diagonal Fock operator.
+    :param single_reference: use single-reference indices if True
+    :return: a list of terms
+    """
+    return [i for i in hamiltonian_operator(1).make_one_body_diagonal(single_reference)]
+
+
+def dyall_hamiltonian():
+    """
+    Return the Dyall Hamiltonian.
+    :return: a list of terms
+    """
+    v = Term([Tensor.make_tensor('H', 'a2,a3', 'a0,a1')], SecondQuantizedOperator('a0,a1', 'a2,a3'), 0.25)
+    return [i for i in hamiltonian_operator(1).make_one_body_diagonal(False)] + [v]
 
 
 def cluster_operator(k, start=0, excitation=True, name='T', scale_factor=1.0,
@@ -188,6 +206,9 @@ class Term:
     def comparison_tuple(self):
         return self.sq_op, self.n_tensors, self.list_of_tensors, abs(self.coeff), self.coeff
 
+    def comparison_tuple_weak(self):
+        return self.sq_op, self.list_of_tensors
+
     @staticmethod
     def _is_valid_operand(other):
         if not isinstance(other, Term):
@@ -195,15 +216,21 @@ class Term:
 
     def __eq__(self, other):
         self._is_valid_operand(other)
-        return (self.coeff, self.sq_op, self.list_of_tensors) == (other.coeff, other.sq_op, other.list_of_tensors)
+        if isclose(self.coeff, other.coeff, abs_tol=1.0e-15):
+            return self.comparison_tuple_weak() == other.comparison_tuple_weak()
+        else:
+            return False
 
     def almost_equal(self, other):
         self._is_valid_operand(other)
-        return (self.sq_op, self.list_of_tensors) == (other.sq_op, other.list_of_tensors)
+        return self.comparison_tuple_weak() == other.comparison_tuple_weak()
 
     def __ne__(self, other):
         self._is_valid_operand(other)
-        return (self.coeff, self.sq_op, self.list_of_tensors) != (other.coeff, other.sq_op, other.list_of_tensors)
+        if isclose(self.coeff, other.coeff, abs_tol=1.0e-15):
+            return self.comparison_tuple_weak() != other.comparison_tuple_weak()
+        else:
+            return True
 
     def __lt__(self, other):
         self._is_valid_operand(other)
@@ -257,7 +284,7 @@ class Term:
 
     @staticmethod
     def format_coeff(value, form=None):
-        fraction = Fraction(value).limit_denominator(1000000)
+        fraction = Fraction(value).limit_denominator(1000000000)
 
         if form == 'ambit':
             if '/' not in str(fraction):

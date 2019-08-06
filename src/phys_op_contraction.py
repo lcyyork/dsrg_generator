@@ -61,6 +61,14 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
         sq_op = sq_ops_to_be_contracted[0] if len(sq_ops_to_be_contracted) == 1 else terms[0].sq_op
         return [Term(tensors, sq_op, coeff)]
     else:
+        # contractions = [i for con in compute_operator_contractions(sq_ops_to_be_contracted, max_cu,
+        #                                                            max_n_open, min_n_open, for_commutator,
+        #                                                            expand_hole, n_process, batch_size=0)
+        #                 for i in con]
+        # chunk_size = int(sqrt(len(contractions)) / n_process) + 1
+        # out = canonicalize_contractions_batch(n_process, contractions, tensors, coeff, False, chunk_size)
+        # return combine_terms(out)
+
         count = 0
         out = []
         contractions = []
@@ -68,9 +76,10 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
         chunk_size = int(sqrt(batch_size) / n_process) + 1
 
         for batch in compute_operator_contractions(sq_ops_to_be_contracted, max_cu, max_n_open, min_n_open,
-                                                   for_commutator, expand_hole, n_process, batch_size=0):
+                                                   for_commutator, expand_hole, 1, batch_size=0):
             count += len(batch)
             contractions += batch
+            print(count, len(contractions))
 
             if count < batch_size:
                 continue
@@ -79,7 +88,6 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
             contractions = []
             count = 0
 
-        # n_process = max(1, len(contractions) // (batch_size // n_process))
         chunk_size = int(sqrt(len(contractions)) / n_process) + 1
         out += canonicalize_contractions_batch(n_process, contractions, tensors, coeff, False, chunk_size)
 
@@ -97,6 +105,10 @@ def canonicalize_contractions_batch(n_process, contractions, tensors, coeff, sim
     :param chunk_size: the chunk size for multiprocessing
     :return: a list of simplified canonicalized terms
     """
+    if len(contractions) == 0:
+        return []
+
+    print("in func", len(contractions))
     if n_process == 1:
         temp = [Term(tensors + densities, sq_op, sign * coeff).canonicalize_sympy()
                 for sign, densities, sq_op in contractions]
@@ -160,6 +172,51 @@ def single_commutator(left, right, max_cu=3, max_n_open=6, min_n_open=0,
         + contract_terms([right, left], max_cu, max_n_open, min_n_open, -scale_factor,
                          for_commutator, expand_hole, n_process)
     return combine_terms(terms)
+
+
+def cluster_operators(levels, start, unitary=True, single_reference=True):
+    """
+    Return a list of cluster operators.
+    :param levels: a list of integers for cluster operator, e.g., [1,2,3] for T1 + T2 + T3
+    :param start: starting number of indices
+    :param unitary: consider A = T - T^+ if True
+    :param single_reference: use single-reference labels if True
+    :return: a list of Term objects
+    """
+    h = 'c' if single_reference else 'h'
+    p = 'v' if single_reference else 'p'
+
+    amps = [cluster_operator(k, hole_label=h, particle_label=p, start=start) for k in levels]
+    if unitary:
+        amps += [cluster_operator(k, excitation=False, scale_factor=-1.0,
+                                  hole_label=h, particle_label=p, start=start)
+                 for k in levels]
+    return amps
+
+
+def linear_commutator(left_terms, cluster_levels, scale_factor, min_n_open, max_n_open, start,
+                      n_process=1, unitary=True, max_cu=1, for_commutator=True, single_reference=True):
+    """
+    Compute the commutator between the input list of terms and the cluster operators [left_term, T].
+    :param left_terms: a list of Terms appear at the first entry of the commutator
+    :param cluster_levels: a list of integers for cluster operator, e.g., [1,2,3] for T1 + T2 + T3
+    :param scale_factor: the scale factor for the commutator
+    :param min_n_open: min number of open indices for contractions of each single commutator
+    :param max_n_open: max number of open indices for contractions of each single commutator
+    :param start: starting number of indices for cluster amplitudes
+    :param n_process: the number of process for multiprocessing
+    :param unitary: consider A = T - T^+ if True
+    :param max_cu: the max cumulant level
+    :param for_commutator: ignore disconnected terms if True
+    :param single_reference: use single-reference labels if True
+    :return: a list of contracted Term objects
+    """
+    out = []
+    for right in cluster_operators(cluster_levels, start, unitary, single_reference):
+        for left in left_terms:
+            out += single_commutator(left, right, max_cu, max_n_open, min_n_open, scale_factor,
+                                     for_commutator, True, n_process)
+    return combine_terms(out)
 
 
 def recursive_single_commutator(terms, max_cu_levels, n_opens, for_commutator=True, expand_hole=True, n_process=1):
@@ -314,7 +371,7 @@ def nested_commutator_cc(nested_level, cluster_levels, max_cu=3, max_n_open=6, m
     :param single_reference: use single-reference amplitudes if True
     :param unitary: use unitary formalism if True
     :param n_process: number of processes launched for tensor canonicalization
-    :return: a map of number of open indices to a list of contracted canonicalized Term objects
+    :return: a list of contracted canonicalized Term objects
     """
     if not isinstance(nested_level, int):
         raise ValueError("Invalid nested_level (must be an integer)")
@@ -330,11 +387,11 @@ def nested_commutator_cc(nested_level, cluster_levels, max_cu=3, max_n_open=6, m
     particle_label = 'v' if single_reference else 'p'
 
     # symbolic evaluate nested commutator
-    T = sum(Operator(f'T{i}') for i in cluster_levels)
-    H = HermitianOperator('H1') + HermitianOperator('H2')
-    A = T - Dagger(T) if unitary else T
+    t = sum(Operator(f'T{i}') for i in cluster_levels)
+    h = HermitianOperator('H1') + HermitianOperator('H2')
+    a = t - Dagger(t) if unitary else t
 
-    for term in sympy_nested_commutator_recursive(nested_level, H, A).doit().expand().args:
+    for term in sympy_nested_commutator_recursive(nested_level, h, a).doit().expand().args:
         coeff, tensors = term.as_coeff_mul()
         factor = scale_factor * int(coeff)
 
@@ -376,7 +433,7 @@ def sort_contraction_results(terms):
     """
     out = defaultdict(list)
     for term in terms:
-        space_str = "".join([i.space for i in term.sq_op.ann_ops] + [i.space for i in term.sq_op.cre_ops])
+        space_str = "".join([i.space for i in term.sq_op.ann_ops.indices + term.sq_op.cre_ops.indices])
         n_perm, perm_str, sq_op_str = term.sq_op.latex_permute_format(*term.perm_partition_open())
         out[(space_str, perm_str)].append(term)
     return out
@@ -396,28 +453,28 @@ def print_terms_ambit(input_terms):
             print()
 
 
-def print_terms_ambit_symmetric(input_terms):
-    """
-    Print contracted results in ambit format assuming results are symmetric (i.e. block ccvv = block vvcc).
-    :param input_terms: a list of terms computed from operator contractions
-    """
-    block_repr = sort_contraction_results(input_terms)
-    sym_blocks = set()
-    for block_p, terms in sorted(block_repr.items(), key=lambda pair: (len(pair[0][0]), len(pair[0][1]), pair[0][0])):
-        block, perm = block_p
-        if block in sym_blocks:
-            continue
-        half1, half2 = block[:len(block)//2], block[len(block)//2:]
-        sym_blocks.add(half2 + half1)
-        scale = 0.5 if half1 == half2 else 1.0
-
-        i_last = len(terms) - 1
-        for i, term in enumerate(terms):
-            term.coeff *= scale
-            print(term.ambit(ignore_permutations=(i != i_last), init_temp=(i == 0), declared_temp=True))
-            term.coeff /= scale
-        if perm == '':
-            print()
+# def print_terms_ambit_symmetric(input_terms):
+#     """
+#     Print contracted results in ambit format assuming results are symmetric (i.e. block ccvv = block vvcc).
+#     :param input_terms: a list of terms computed from operator contractions
+#     """
+#     block_repr = sort_contraction_results(input_terms)
+#     sym_blocks = set()
+#     for block_p, terms in sorted(block_repr.items(), key=lambda pair: (len(pair[0][0]), len(pair[0][1]), pair[0][0])):
+#         block, perm = block_p
+#         if block in sym_blocks:
+#             continue
+#         half1, half2 = block[:len(block)//2], block[len(block)//2:]
+#         sym_blocks.add(half2 + half1)
+#         scale = 0.5 if half1 == half2 else 1.0
+#
+#         i_last = len(terms) - 1
+#         for i, term in enumerate(terms):
+#             term.coeff *= scale
+#             print(term.ambit(ignore_permutations=(i != i_last), init_temp=(i == 0), declared_temp=True))
+#             term.coeff /= scale
+#         if perm == '':
+#             print()
 
 
 def print_terms_ambit_functions(input_terms):

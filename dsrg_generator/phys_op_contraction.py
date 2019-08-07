@@ -491,6 +491,112 @@ def print_terms_ambit_functions(input_terms):
             if perm == '':
                 print()
 
+
+def save_terms_ambit_functions(input_terms, func_name, path_dir, namespace="MRDSRG_SO"):
+    block_repr = sort_contraction_results(input_terms)
+    out_terms = {k[0]: {k[1]: []} for k in block_repr.keys()}
+    for k, terms in block_repr.items():
+        out_terms[k[0]][k[1]] = terms
+
+    tensor_ordering = {f"H{i}": i for i in range(10)}
+    tensor_ordering.update({f"T{i - 100}": i for i in range(100, 110)})
+    tensor_ordering.update({f"C{i - 1000}": i for i in range(1000, 1010)})
+    types = {i: 'BlockedTensor&' if '0' not in i else 'double&' for i in tensor_ordering}
+
+    func_calls = []
+    footprints = []
+    func_tensors = set()
+
+    for block in out_terms.keys():
+        func_str, func_call, tensors, func_footprint = terms_ambit_block(out_terms[block], block, tensor_ordering, func_name, namespace)
+        func_calls.append(func_call)
+        func_tensors.update(tensors)
+        footprints.append(func_footprint)
+        print(func_str)
+
+    func_tensors = sorted(func_tensors, key=lambda x: tensor_ordering[x])
+    func_tensors_str = ", ".join(f"{types[i]} {i}" for i in func_tensors)
+    footprints.append(f'void {func_name}(double factor, {func_tensors_str});')
+    func = f"void {namespace}::{func_name}(double factor, {func_tensors_str}) {{\n    "
+
+    c = [i for i in func_tensors if 'C' in i and '0' not in i]
+
+    prefix = [] if 'C0' not in func_tensors else ['C0 = 0.0;']
+    for i in c:
+        prefix.append(f'{i}.zero();')
+
+    func += "\n    ".join(prefix) + '\n\n    '
+
+    func += "\n    ".join(func_calls) + '\n\n    '
+
+    suffix = [] if 'C0' not in func_tensors else ['C0 *= 2.0;']
+    if c:
+        suffix.append('BlockedTensor temp;')
+    for i in c:
+        n_body = int(i[1:])
+        upper = ','.join(f'g{i}' for i in range(n_body))
+        lower = ','.join(f'g{i}' for i in range(n_body, 2 * n_body))
+        b = 'g' * (2 * n_body)
+        suffix.append(f'temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {{"{b}"}});')
+        suffix.append(f'temp[{upper},{lower}] = {i}[{upper},{lower}];')
+        suffix.append(f'{i}[{upper},{lower}] += temp[{lower},{upper}];')
+    func += "\n    ".join(suffix) + '\n}'
+
+    print(func)
+    print('\n'.join(footprints))
+
+
+def terms_ambit_block(perm_terms, block, tensor_ordering, func_name, namespace):
+    target = f"C{len(block) // 2}"
+    do_temp = False
+    tensors = set()
+    out = ""
+
+    init_temp = True
+
+    for perm, terms in perm_terms.items():
+        if perm:
+            do_temp = True
+
+        for term in terms:
+            for tensor in term.list_of_tensors:
+                tensors.add(f"{tensor.name}{tensor.n_body}")
+
+        i_last = len(terms) - 1
+        for i, term in enumerate(terms):
+            ambit = ""
+            if perm and i == 0:
+                if init_temp:
+                    init_temp = False
+                    ambit = f'temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {{"{block}"}});\n'
+                else:
+                    ambit = 'temp.zero();\n'
+
+            ambit += term.ambit(ignore_permutations=(i != i_last), init_temp=False, declared_temp=True)
+            ambit = "\n    ".join(ambit.split('\n'))
+            out += '\n    ' + ambit
+        if perm == '':
+            out += '\n'
+
+    tensors = sorted(tensors, key=lambda x: tensor_ordering[x])
+    tensors_str = ", ".join(f"BlockedTensor& {i}" for i in tensors)
+    tensors_str += ', double& C0' if target == 'C0' else f', BlockedTensor& {target}'
+
+    if block == '':
+        block = '0'
+
+    func_call = f"{func_name}_{block}({tensors_str})"
+    func = f"void {namespace}::{func_call} {{"
+
+    if do_temp:
+        func += "\n    BlockedTensor temp;\n"
+    if out[-1] != '\n':
+        out = out[:-4]
+
+    out = func + out + '}\n'
+
+    return out, f"{func_name}_{block}({', '.join(tensors + [target])});", tensors + [target], f"void {func_call};"
+
     # # figure out levels of Hamiltonian, ClusterAmplitudes, and Cumulants for each block
     # tensor_levels = {}
     # total_levels = [set(), set(), set()]

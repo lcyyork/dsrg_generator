@@ -6,7 +6,7 @@ from dsrg_generator.SQOperator import SecondQuantizedOperator
 from dsrg_generator.phys_op_contraction import contract_terms, combine_terms
 from dsrg_generator.phys_op_contraction import single_commutator, recursive_single_commutator
 from dsrg_generator.phys_op_contraction import bch_cc_rsc, nested_commutator_cc
-from dsrg_generator.phys_op_contraction import print_terms_ambit_functions
+from dsrg_generator.phys_op_contraction import print_terms_ambit_functions, save_terms_ambit_functions
 
 
 make_tensor = Tensor.make_tensor
@@ -190,7 +190,7 @@ def test_print_ambit_functions():
     a = [i for n in range(1, 5)
          for i in nested_commutator_cc(n, [1, 2], 1, max_n_open=4, single_reference=True)]
 
-    print_terms_ambit_functions(a)
+    save_terms_ambit_functions(a, 'abc')
 
 
 # def test_contraction_categorized_5():

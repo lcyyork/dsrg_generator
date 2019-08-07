@@ -1,11 +1,11 @@
 from itertools import combinations
 
-from src.Indices import Indices
-from src.SQOperator import SecondQuantizedOperator
-from src.Tensor import Tensor
-from src.sqop_contraction import expand_hole_densities
-from src.sqop_contraction import compute_elementary_contractions_list, compute_elementary_contractions_categorized
-from src.sqop_contraction import compute_operator_contractions, compute_operator_contractions_general
+from dsrg_generator.Indices import Indices
+from dsrg_generator.SQOperator import SecondQuantizedOperator
+from dsrg_generator.Tensor import Tensor
+from dsrg_generator.sqop_contraction import expand_hole_densities
+from dsrg_generator.sqop_contraction import compute_elementary_contractions_list, compute_elementary_contractions_categorized
+from dsrg_generator.sqop_contraction import compute_operator_contractions, compute_operator_contractions_general
 
 
 SQ = SecondQuantizedOperator

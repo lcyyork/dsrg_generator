@@ -1,5 +1,5 @@
 import pytest
-from src.Index import Index
+from dsrg_generator.Index import Index
 
 
 def test_index_init():

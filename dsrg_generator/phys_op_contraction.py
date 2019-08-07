@@ -11,16 +11,16 @@ from sympy.core.power import Pow
 from sympy.core.add import Add
 from sympy.core.mul import Mul
 
-from src.helper.integer_partition import integer_partition
-from src.mo_space import space_relation, space_priority
-from src.Indices import Indices
-from src.helper.multiprocess_helper import calculate_star
-from src.SQOperator import SecondQuantizedOperator
-from src.Tensor import ClusterAmplitude, HamiltonianTensor, Cumulant
-from src.Term import Term, cluster_operator, hamiltonian_operator
-from src.sqop_contraction import compute_operator_contractions
+from dsrg_generator.helper.integer_partition import integer_partition
+from dsrg_generator.mo_space import space_relation, space_priority
+from dsrg_generator.Indices import Indices
+from dsrg_generator.helper.multiprocess_helper import calculate_star
+from dsrg_generator.SQOperator import SecondQuantizedOperator
+from dsrg_generator.Tensor import ClusterAmplitude, HamiltonianTensor, Cumulant
+from dsrg_generator.Term import Term, cluster_operator, hamiltonian_operator
+from dsrg_generator.sqop_contraction import compute_operator_contractions
 # from sqop_contraction import generate_operator_contractions, generate_operator_contractions_new
-from src.helper.Timer import Timer
+from dsrg_generator.helper.Timer import Timer
 
 
 def multiprocessing_canonicalize_contractions(tensors, sq_op, coeff):

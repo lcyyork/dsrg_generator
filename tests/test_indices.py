@@ -1,6 +1,6 @@
 import pytest
-from src.Index import Index
-from src.Indices import Indices, IndicesSpinOrbital, IndicesSpinIntegrated
+from dsrg_generator.Index import Index
+from dsrg_generator.Indices import Indices, IndicesSpinOrbital, IndicesSpinIntegrated
 
 
 def test_indices_init():

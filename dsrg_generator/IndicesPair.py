@@ -2,7 +2,7 @@ from sympy.combinatorics.tensor_can import get_symmetric_group_sgs, bsgs_direct_
 from sympy.combinatorics import Permutation
 from sympy.combinatorics.perm_groups import PermutationGroup
 
-from src.Indices import Indices, IndicesSpinOrbital, IndicesAntisymmetric
+from dsrg_generator.Indices import Indices, IndicesSpinOrbital, IndicesAntisymmetric
 
 
 class IndicesPair:

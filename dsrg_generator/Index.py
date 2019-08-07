@@ -1,4 +1,4 @@
-from src.mo_space import space_priority
+from dsrg_generator.mo_space import space_priority
 
 
 class Index:

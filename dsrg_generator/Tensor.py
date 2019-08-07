@@ -1,5 +1,5 @@
-from src.mo_space import space_relation
-from src.IndicesPair import IndicesPair
+from dsrg_generator.mo_space import space_relation
+from dsrg_generator.IndicesPair import IndicesPair
 
 
 class Tensor(IndicesPair):

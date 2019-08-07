@@ -1,8 +1,8 @@
 import pytest
-from src.Index import Index
-from src.Term import Term
-from src.Tensor import Tensor
-from src.SQOperator import SecondQuantizedOperator
+from dsrg_generator.Index import Index
+from dsrg_generator.Term import Term
+from dsrg_generator.Tensor import Tensor
+from dsrg_generator.SQOperator import SecondQuantizedOperator
 
 
 make_tensor = Tensor.make_tensor

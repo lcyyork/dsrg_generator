@@ -1,4 +1,4 @@
-from src.IndicesPair import IndicesPair
+from dsrg_generator.IndicesPair import IndicesPair
 
 
 class SecondQuantizedOperator(IndicesPair):

@@ -49,13 +49,13 @@ from sympy import binomial
 from sympy.combinatorics import Permutation
 from sympy.utilities.iterables import multiset_permutations
 
-from src.helper.integer_partition import integer_partition
-from src.helper.multiprocess_helper import calculate_star
-from src.mo_space import space_relation
-from src.Index import Index
-from src.Indices import IndicesSpinOrbital
-from src.SQOperator import SecondQuantizedOperator
-from src.Tensor import Tensor, HoleDensity, Cumulant
+from dsrg_generator.helper.integer_partition import integer_partition
+from dsrg_generator.helper.multiprocess_helper import calculate_star
+from dsrg_generator.mo_space import space_relation
+from dsrg_generator.Index import Index
+from dsrg_generator.Indices import IndicesSpinOrbital
+from dsrg_generator.SQOperator import SecondQuantizedOperator
+from dsrg_generator.Tensor import Tensor, HoleDensity, Cumulant
 # from timeit import default_timer as timer
 
 

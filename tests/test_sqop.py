@@ -1,8 +1,8 @@
 import pytest
-from src.Index import Index
-from src.Indices import Indices
-from src.IndicesPair import IndicesPair
-from src.SQOperator import SecondQuantizedOperator
+from dsrg_generator.Index import Index
+from dsrg_generator.Indices import Indices
+from dsrg_generator.IndicesPair import IndicesPair
+from dsrg_generator.SQOperator import SecondQuantizedOperator
 
 
 def test_init():

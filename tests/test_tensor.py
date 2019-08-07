@@ -1,7 +1,7 @@
 import pytest
-from src.Indices import IndicesSpinAdapted, IndicesSpinIntegrated
-from src.IndicesPair import IndicesPair
-from src.Tensor import Tensor, HoleDensity, Cumulant, Kronecker, ClusterAmplitude, HamiltonianTensor
+from dsrg_generator.Indices import IndicesSpinAdapted, IndicesSpinIntegrated
+from dsrg_generator.IndicesPair import IndicesPair
+from dsrg_generator.Tensor import Tensor, HoleDensity, Cumulant, Kronecker, ClusterAmplitude, HamiltonianTensor
 
 
 def test_init_1():

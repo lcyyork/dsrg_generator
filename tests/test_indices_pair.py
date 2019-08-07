@@ -2,8 +2,8 @@ import pytest
 from sympy.combinatorics import Permutation
 from sympy.combinatorics.tensor_can import riemann_bsgs
 
-from src.Indices import Indices
-from src.IndicesPair import IndicesPair
+from dsrg_generator.Indices import Indices
+from dsrg_generator.IndicesPair import IndicesPair
 
 
 def test_init():

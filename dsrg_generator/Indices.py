@@ -3,8 +3,8 @@ from itertools import product, combinations
 from sympy.combinatorics import Permutation
 from sympy.utilities.iterables import multiset_permutations
 
-from src.mo_space import space_priority
-from src.Index import Index
+from dsrg_generator.mo_space import space_priority
+from dsrg_generator.Index import Index
 
 
 def sort_and_count_inversions(array):

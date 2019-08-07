@@ -1,12 +1,12 @@
 from collections import defaultdict
 from timeit import default_timer as timer
-from src.Term import Term, hamiltonian_operator, cluster_operator
-from src.Tensor import Tensor
-from src.SQOperator import SecondQuantizedOperator
-from src.phys_op_contraction import contract_terms, combine_terms
-from src.phys_op_contraction import single_commutator, recursive_single_commutator
-from src.phys_op_contraction import bch_cc_rsc, nested_commutator_cc
-from src.phys_op_contraction import print_terms_ambit_functions
+from dsrg_generator.Term import Term, hamiltonian_operator, cluster_operator
+from dsrg_generator.Tensor import Tensor
+from dsrg_generator.SQOperator import SecondQuantizedOperator
+from dsrg_generator.phys_op_contraction import contract_terms, combine_terms
+from dsrg_generator.phys_op_contraction import single_commutator, recursive_single_commutator
+from dsrg_generator.phys_op_contraction import bch_cc_rsc, nested_commutator_cc
+from dsrg_generator.phys_op_contraction import print_terms_ambit_functions
 
 
 make_tensor = Tensor.make_tensor

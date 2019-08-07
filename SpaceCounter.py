@@ -1,8 +1,8 @@
 from copy import deepcopy
-from src.mo_space import space_priority, space_priority_so
-from src.Indices import IndicesSpinOrbital
-from src.Tensor import Tensor
-from src.SQOperator import SecondQuantizedOperator
+from dsrg_generator.mo_space import space_priority, space_priority_so
+from dsrg_generator.Indices import IndicesSpinOrbital
+from dsrg_generator.Tensor import Tensor
+from dsrg_generator.SQOperator import SecondQuantizedOperator
 
 
 class SpaceCounter:

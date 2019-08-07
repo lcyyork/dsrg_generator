@@ -5,11 +5,11 @@ from math import factorial, isclose
 from sympy.combinatorics.tensor_can import canonicalize
 from sympy.combinatorics import Permutation
 
-from src.mo_space import space_priority, space_relation, space_relation_so, find_space_label
-from src.Index import Index
-from src.Indices import IndicesSpinOrbital
-from src.Tensor import Tensor, Cumulant, ClusterAmplitude, Kronecker
-from src.SQOperator import SecondQuantizedOperator
+from dsrg_generator.mo_space import space_priority, space_relation, space_relation_so, find_space_label
+from dsrg_generator.Index import Index
+from dsrg_generator.Indices import IndicesSpinOrbital
+from dsrg_generator.Tensor import Tensor, Cumulant, ClusterAmplitude, Kronecker
+from dsrg_generator.SQOperator import SecondQuantizedOperator
 
 
 def hamiltonian_operator(k, start=0, indices_type='spin-orbital'):

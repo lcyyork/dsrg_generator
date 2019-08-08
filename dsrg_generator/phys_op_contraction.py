@@ -11,6 +11,7 @@ from sympy.core.power import Pow
 from sympy.core.add import Add
 from sympy.core.mul import Mul
 
+from dsrg_generator.helper.file_utils import multi_gsub
 from dsrg_generator.helper.integer_partition import integer_partition
 from dsrg_generator.mo_space import space_relation, space_priority
 from dsrg_generator.Indices import Indices
@@ -492,7 +493,7 @@ def print_terms_ambit_functions(input_terms):
                 print()
 
 
-def save_terms_ambit_functions(input_terms, func_name, path_dir, namespace="MRDSRG_SO"):
+def save_terms_ambit_functions(input_terms, func_name, path_dir, template, namespace="MRDSRG_SO"):
     block_repr = sort_contraction_results(input_terms)
     out_terms = {k[0]: {k[1]: []} for k in block_repr.keys()}
     for k, terms in block_repr.items():
@@ -508,11 +509,19 @@ def save_terms_ambit_functions(input_terms, func_name, path_dir, namespace="MRDS
     func_tensors = set()
 
     for block in out_terms.keys():
-        func_str, func_call, tensors, func_footprint = terms_ambit_block(out_terms[block], block, tensor_ordering, func_name, namespace)
+        block_name = '0' if block == '' else block
+
+        func_str, func_call, tensors, func_footprint = terms_ambit_block(out_terms[block], block_name, tensor_ordering, func_name, namespace)
         func_calls.append(func_call)
         func_tensors.update(tensors)
         footprints.append(func_footprint)
-        print(func_str)
+
+        filename = f'{path_dir}/{func_name}_{block_name}.cc'
+        input_string = multi_gsub({"HEADERS": f'#include {namespace}.h'.lower(), "CPP_FUNCTIONS": func_str},
+                                  template)
+        with open(filename, 'w') as f:
+            f.write(input_string)
+        # print(func_str)
 
     func_tensors = sorted(func_tensors, key=lambda x: tensor_ordering[x])
     func_tensors_str = ", ".join(f"{types[i]} {i}" for i in func_tensors)
@@ -542,8 +551,16 @@ def save_terms_ambit_functions(input_terms, func_name, path_dir, namespace="MRDS
         suffix.append(f'{i}[{upper},{lower}] += temp[{lower},{upper}];')
     func += "\n    ".join(suffix) + '\n}'
 
-    print(func)
-    print('\n'.join(footprints))
+    filename = f'{path_dir}/{func_name}.cc'
+    input_string = multi_gsub({"HEADERS": f'#include {namespace}.h'.lower(), "CPP_FUNCTIONS": func}, template)
+    with open(filename, 'w') as f:
+        f.write(input_string)
+    # print(func)
+
+    filename = f'{path_dir}/{func_name}_append.h'
+    with open(filename, 'w') as f:
+        f.write('\n'.join(footprints))
+    # print('\n'.join(footprints))
 
 
 def terms_ambit_block(perm_terms, block, tensor_ordering, func_name, namespace):
@@ -581,9 +598,6 @@ def terms_ambit_block(perm_terms, block, tensor_ordering, func_name, namespace):
     tensors = sorted(tensors, key=lambda x: tensor_ordering[x])
     tensors_str = ", ".join(f"BlockedTensor& {i}" for i in tensors)
     tensors_str += ', double& C0' if target == 'C0' else f', BlockedTensor& {target}'
-
-    if block == '':
-        block = '0'
 
     func_call = f"{func_name}_{block}({tensors_str})"
     func = f"void {namespace}::{func_call} {{"

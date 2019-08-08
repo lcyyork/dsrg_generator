@@ -187,10 +187,17 @@ def test_nested_cc_2():
 
 
 def test_print_ambit_functions():
-    a = [i for n in range(1, 5)
-         for i in nested_commutator_cc(n, [1, 2], 1, max_n_open=4, single_reference=True)]
+    import os
+    from dsrg_generator.helper.file_utils import ChangeDir
 
-    save_terms_ambit_functions(a, 'abc')
+    template = open(os.getcwd() + f'/../forte_templates/ambit_template').read()
+
+    with ChangeDir('ccsd') as cd:
+
+        a = [i for n in range(1, 5)
+             for i in nested_commutator_cc(n, [1, 2], 1, max_n_open=4, single_reference=True)]
+
+        save_terms_ambit_functions(a, 'ccsd', cd.get_cwd(), template, "CCSD")
 
 
 # def test_contraction_categorized_5():

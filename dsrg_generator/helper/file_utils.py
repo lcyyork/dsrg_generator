@@ -11,11 +11,11 @@ def multi_gsub(subs, string):
 
 class ChangeDir:
     def __init__(self, dir_name):
+        self.cwd = os.getcwd()
         if isinstance(dir_name, str):
-            self.dir = dir_name
+            self.dir = f'{self.cwd}/{dir_name}'
         else:
             raise ValueError('ChangeDir only accepts string dir_name')
-        self.cwd = os.getcwd()
 
     def __enter__(self):
         try:
@@ -28,3 +28,6 @@ class ChangeDir:
 
     def __exit__(self, *args):
         os.chdir(self.cwd)
+
+    def get_cwd(self):
+        return self.dir

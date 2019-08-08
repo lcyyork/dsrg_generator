@@ -1,0 +1,9 @@
+HEADERS
+
+using namespace psi;
+
+namespace forte {
+
+CPP_FUNCTIONS
+
+} // namespace forte

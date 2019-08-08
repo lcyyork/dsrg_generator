@@ -433,7 +433,7 @@ class Term:
                 for space in sorted(cat.keys(), key=lambda x: space_priority[x]):
                     out.append(cat[space])
 
-            return out
+            return sorted(out)
 
     @staticmethod
     def _generate_next_index(space, next_index, add=True):

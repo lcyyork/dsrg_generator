@@ -158,7 +158,7 @@ def test_void():
     assert a == b
 
 
-def test_perm_part():
+def test_perm_part_1():
     list_of_tensors = [make_tensor('H', 'g0, g1', 'g2, p0'), make_tensor('T', 'h0, h1', 'p0, p1')]
     sq_op = make_sq('g0, g1, p1', 'g2, h0, h1')
     a = Term(list_of_tensors, sq_op)
@@ -166,6 +166,8 @@ def test_perm_part():
     assert cre_part == [[Index('g0'), Index('g1')], [Index('p1')]]
     assert ann_part == [[Index('g2')], [Index('h0'), Index('h1')]]
 
+
+def test_perm_part_2():
     list_of_tensors = [make_tensor('H', 'v4, c2', 'v3, c1'),
                        make_tensor('T', 'c1', 'v0'),
                        make_tensor('T', 'c0, c3', 'v1, v4'),
@@ -173,7 +175,7 @@ def test_perm_part():
     sq_op = make_sq('v2, c0', 'v0, v1')
     a = Term(list_of_tensors, sq_op)
     cre_part, ann_part = a.perm_partition_open()
-    assert cre_part == [[Index('c0')], [Index('v2')]]
+    assert cre_part == [[Index('v2')], [Index('c0')]]
     assert ann_part == [[Index('v0')], [Index('v1')]]
 
     list_of_tensors = [make_tensor('H', 'v3, v4', 'v0, c3'),
@@ -185,12 +187,36 @@ def test_perm_part():
     assert cre_part == [[Index('v0')], [Index('v1')], [Index('v2')]]
     assert ann_part == [[Index('c0'), Index('c1')], [Index('c2')]]
 
+
+def test_perm_part_3():
     list_of_tensors = [make_tensor('H', 'g0, h1', 'p1, g0')]
     sq_op = make_sq('g0, p1', 'g0, h1')
     a = Term(list_of_tensors, sq_op, -1)
     cre_part, ann_part = a.perm_partition_open()
     assert cre_part == [[Index('g0')], [Index('p1')]]
     assert ann_part == [[Index('g0')], [Index('h1')]]
+
+    list_of_tensors = [make_tensor('H', 'g0, h0, a0', 'g1, p0, p1'), make_tensor('t', 'p0, p1', 'a0,a1')]
+    sq_op = make_sq('g1, a1', 'g0, h0')
+    a = Term(list_of_tensors, sq_op, -1)
+    cre_part, ann_part = a.perm_partition_open()
+    assert cre_part == [[Index('g1')], [Index('a1')]]
+    assert ann_part == [[Index('g0')], [Index('h0')]]
+
+
+def test_perm_part_4():
+    list_of_tensors = [make_tensor('H', 'c1', 'c0'), make_tensor('t', 'c1,a0', 'v0,v1')]
+    sq_op = make_sq('v0,v1', 'c0,a0')
+    a = Term(list_of_tensors, sq_op)
+    cre_part_1, ann_part_1 = a.perm_partition_open()
+
+    list_of_tensors = [make_tensor('H', 'a1', 'a0'), make_tensor('t', 'c0,a1', 'v0,v1')]
+    sq_op = make_sq('v0,v1', 'c0,a0')
+    a = Term(list_of_tensors, sq_op)
+    cre_part_2, ann_part_2 = a.perm_partition_open()
+
+    assert cre_part_1 == cre_part_2
+    assert ann_part_1 == ann_part_2
 
 
 def test_simplify():

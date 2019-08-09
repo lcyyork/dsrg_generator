@@ -435,17 +435,21 @@ def nested_commutator_cc(nested_level, cluster_levels, max_cu=3, max_n_open=6, m
     return combine_terms(out)
 
 
-def sort_contraction_results(terms):
+def categorize_contractions(terms):
     """
-    Sort contraction results to blocks of operators and permutations.
+    Categorize contraction results to blocks of operators and permutations.
     :param terms: a list of terms computed from operator contractions
-    :return: a dictionary of terms with (space, permutation) being the key
+    :return: a dictionary {indices spaces: {permutation: list of terms}}
     """
-    out = defaultdict(list)
+    space_perm_repr = defaultdict(list)  # (space, permutation) being the key
     for term in terms:
-        space_str = "".join([i.space for i in term.sq_op.ann_ops.indices + term.sq_op.cre_ops.indices])
+        space_str = "".join([i.space for i in term.sq_op.indices()])
         n_perm, perm_str, sq_op_str = term.sq_op.latex_permute_format(*term.perm_partition_open())
-        out[(space_str, perm_str)].append(term)
+        space_perm_repr[(space_str, perm_str)].append(term)
+
+    out = {k[0]: {k[1]: []} for k in space_perm_repr.keys()}
+    for k, terms in space_perm_repr.items():
+        out[k[0]][k[1]] = sorted(terms)
     return out
 
 
@@ -454,14 +458,31 @@ def print_terms_ambit(input_terms):
     Print contracted results in ambit format.
     :param input_terms: a list of terms computed from operator contractions
     """
-    block_repr = sort_contraction_results(input_terms)
-    for k, terms in sorted(block_repr.items(), key=lambda pair: (len(pair[0][0]), len(pair[0][1]), pair[0][0])):
-        i_last = len(terms) - 1
-        for i, term in enumerate(terms):
-            print(term.ambit(ignore_permutations=(i != i_last), init_temp=(i == 0), declared_temp=True))
-        if k[1] == '':
-            print()
+    block_repr = categorize_contractions(input_terms)
 
+    for block in block_repr.keys():
+        for perm, terms in block_repr[block].items():
+            i_last = len(terms) - 1
+            for i, term in enumerate(terms):
+                print(term.ambit(ignore_permutations=(i != i_last), init_temp=(i == 0), declared_temp=True))
+            if perm == '':
+                print()
+
+
+def print_terms_latex(input_terms):
+    """
+    Print contracted results in latex format.
+    :param input_terms: a list of terms computed from operator contractions
+    """
+    block_repr = categorize_contractions(input_terms)
+
+    for block in block_repr.keys():
+        print("\\begin{align}")
+        for perm, terms in block_repr[block].items():
+            i_last = len(terms) - 1
+            for i, term in enumerate(terms):
+                print(term.latex(delimiter=True, backslash=(i != i_last)))
+        print("\\end{align}\n")
 
 # def print_terms_ambit_symmetric(input_terms):
 #     """
@@ -487,26 +508,8 @@ def print_terms_ambit(input_terms):
 #             print()
 
 
-def print_terms_ambit_functions(input_terms):
-    block_repr = sort_contraction_results(input_terms)
-    out_terms = {k[0]: {k[1]: []} for k in block_repr.keys()}
-    for k, terms in block_repr.items():
-        out_terms[k[0]][k[1]] = terms
-
-    for block in out_terms.keys():
-        for perm, terms in out_terms[block].items():
-            i_last = len(terms) - 1
-            for i, term in enumerate(terms):
-                print(term.ambit(ignore_permutations=(i != i_last), init_temp=(i == 0), declared_temp=True))
-            if perm == '':
-                print()
-
-
 def save_terms_ambit_functions(input_terms, func_name, path_dir, template, namespace="MRDSRG_SO"):
-    block_repr = sort_contraction_results(input_terms)
-    out_terms = {k[0]: {k[1]: []} for k in block_repr.keys()}
-    for k, terms in block_repr.items():
-        out_terms[k[0]][k[1]] = terms
+    out_terms = categorize_contractions(input_terms)
 
     tensor_ordering = {f"H{i}": i for i in range(10)}
     tensor_ordering.update({f"T{i - 100}": i for i in range(100, 110)})
@@ -658,74 +661,74 @@ def terms_ambit_block(perm_terms, block, tensor_ordering, func_name, namespace):
     # addC +=
 
 
-def save_terms_ambit(input_terms, full_path, func_name):
-    """
-    Save the contracted results to C++ file.
-    :param input_terms: a list of terms computed from operator contractions
-    :param full_path: the full path of the file name
-    :param func_name: the name of function
-    """
-    prefix = f"""void MRDSRG_SO::{func_name}(double factor, BlockedTensor& H1, BlockedTensor& H2,
-                                   BlockedTensor& T1, BlockedTensor& T2, double& C0, BlockedTensor& C1,
-                                   BlockedTensor& C2) {{
-    C0 = 0.0;
-    C1.zero();
-    C2.zero();
-    BlockedTensor temp;""" + "\n" * 2
+# def save_terms_ambit(input_terms, full_path, func_name):
+#     """
+#     Save the contracted results to C++ file.
+#     :param input_terms: a list of terms computed from operator contractions
+#     :param full_path: the full path of the file name
+#     :param func_name: the name of function
+#     """
+#     prefix = f"""void MRDSRG_SO::{func_name}(double factor, BlockedTensor& H1, BlockedTensor& H2,
+#                                    BlockedTensor& T1, BlockedTensor& T2, double& C0, BlockedTensor& C1,
+#                                    BlockedTensor& C2) {{
+#     C0 = 0.0;
+#     C1.zero();
+#     C2.zero();
+#     BlockedTensor temp;""" + "\n" * 2
+#
+#     suffix = """
+#     // scale by factor
+#     C0 *= factor;
+#     C1.scale(factor);
+#     C2.scale(factor);
+#
+#     // add T dagger
+#     C0 *= 2.0;
+#     temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {"gg"});
+#     temp["pq"] = C1["pq"];
+#     C1["pq"] += temp["qp"];
+#     temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {"gggg"});
+#     temp["pqrs"] = C2["pqrs"];
+#     C2["pqrs"] += temp["rspq"];""" + "\n}"
+#
+#     with open(full_path, 'w') as w:
+#         w.write(prefix)
+#
+#         block_repr = sort_contraction_results(input_terms)
+#         sym_blocks = set()
+#         for block_p, terms in sorted(block_repr.items(),
+#                                      key=lambda pair: (len(pair[0][0]), len(pair[0][1]), pair[0][0])):
+#             block, perm = block_p
+#             if block in sym_blocks:
+#                 continue
+#             half1, half2 = block[:len(block) // 2], block[len(block) // 2:]
+#             sym_blocks.add(half2 + half1)
+#             scale = 0.5 if half1 == half2 else 1.0
+#
+#             i_last = len(terms) - 1
+#             for i, term in enumerate(terms):
+#                 term.coeff *= scale
+#                 w.write(f'    {term.ambit(ignore_permutations=(i != i_last), init_temp=(i == 0), declared_temp=True)}\n')
+#                 term.coeff /= scale
+#             if perm == '':
+#                 w.write('\n')
+#
+#         w.write(suffix)
 
-    suffix = """
-    // scale by factor
-    C0 *= factor;
-    C1.scale(factor);
-    C2.scale(factor);
 
-    // add T dagger
-    C0 *= 2.0;
-    temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {"gg"});
-    temp["pq"] = C1["pq"];
-    C1["pq"] += temp["qp"];
-    temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {"gggg"});
-    temp["pqrs"] = C2["pqrs"];
-    C2["pqrs"] += temp["rspq"];""" + "\n}"
-
-    with open(full_path, 'w') as w:
-        w.write(prefix)
-
-        block_repr = sort_contraction_results(input_terms)
-        sym_blocks = set()
-        for block_p, terms in sorted(block_repr.items(),
-                                     key=lambda pair: (len(pair[0][0]), len(pair[0][1]), pair[0][0])):
-            block, perm = block_p
-            if block in sym_blocks:
-                continue
-            half1, half2 = block[:len(block) // 2], block[len(block) // 2:]
-            sym_blocks.add(half2 + half1)
-            scale = 0.5 if half1 == half2 else 1.0
-
-            i_last = len(terms) - 1
-            for i, term in enumerate(terms):
-                term.coeff *= scale
-                w.write(f'    {term.ambit(ignore_permutations=(i != i_last), init_temp=(i == 0), declared_temp=True)}\n')
-                term.coeff /= scale
-            if perm == '':
-                w.write('\n')
-
-        w.write(suffix)
-
-
-def print_results(results, form='latex'):
-    if form == 'latex':
-        print("\\begin{align}")
-        for n_open, terms in results.items():
-            print(f"% Open Indices {n_open}")
-            for term in terms:
-                print(term.latex(delimiter=True, backslash=True))
-        print("\\end{align}")
-    else:
-        for n_open, terms in results.items():
-            print(f"// Open Indices {n_open}")
-            for term in terms:
-                print(term.ambit())
+# def print_results(results, form='latex'):
+#     if form == 'latex':
+#         print("\\begin{align}")
+#         for n_open, terms in results.items():
+#             print(f"% Open Indices {n_open}")
+#             for term in terms:
+#                 print(term.latex(delimiter=True, backslash=True))
+#         print("\\end{align}")
+#     else:
+#         for n_open, terms in results.items():
+#             print(f"// Open Indices {n_open}")
+#             for term in terms:
+#                 print(term.ambit())
 
 # T2 = cluster_operator(2)
 # T2_1 = cluster_operator(2, 2)

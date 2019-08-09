@@ -6,7 +6,7 @@ from dsrg_generator.SQOperator import SecondQuantizedOperator
 from dsrg_generator.phys_op_contraction import contract_terms, combine_terms
 from dsrg_generator.phys_op_contraction import single_commutator, recursive_single_commutator
 from dsrg_generator.phys_op_contraction import bch_cc_rsc, nested_commutator_cc
-from dsrg_generator.phys_op_contraction import print_terms_ambit_functions, save_terms_ambit_functions
+from dsrg_generator.phys_op_contraction import print_terms_ambit, print_terms_latex, save_terms_ambit_functions
 
 
 make_tensor = Tensor.make_tensor
@@ -159,7 +159,7 @@ def test_nested_cc_2():
     a = [i for n in range(1, 5)
          for i in nested_commutator_cc(n, [1, 2, 3], 1, max_n_open=6, single_reference=True, n_process=4)]
 
-    print_terms_ambit_functions(a)
+    print_terms_ambit(a)
 
     # # comparing to CCSD with recursive single commutator
     # b = bch_cc_rsc(4, [1, 2], 1, (0, 4), single_reference=True, unitary=False)

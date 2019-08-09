@@ -6,7 +6,8 @@ from dsrg_generator.SQOperator import SecondQuantizedOperator
 from dsrg_generator.phys_op_contraction import contract_terms, combine_terms
 from dsrg_generator.phys_op_contraction import single_commutator, recursive_single_commutator
 from dsrg_generator.phys_op_contraction import bch_cc_rsc, nested_commutator_cc
-from dsrg_generator.phys_op_contraction import print_terms_ambit, print_terms_latex, save_terms_ambit_functions
+from dsrg_generator.phys_op_contraction import print_terms_ambit, print_terms_latex
+from dsrg_generator.write_forte_functions import save_terms_ambit_functions
 
 
 make_tensor = Tensor.make_tensor
@@ -190,14 +191,14 @@ def test_print_ambit_functions():
     import os
     from dsrg_generator.helper.file_utils import ChangeDir
 
-    template = open(os.getcwd() + f'/../forte_templates/ambit_template').read()
+    # template = open(os.getcwd() + f'/../forte_templates/ambit_template').read()
 
     with ChangeDir('ccsd') as cd:
 
         a = [i for n in range(1, 5)
              for i in nested_commutator_cc(n, [1, 2], 1, max_n_open=4, single_reference=True)]
 
-        save_terms_ambit_functions(a, 'ccsd', cd.get_cwd(), template, "CCSD")
+        save_terms_ambit_functions(a, 'ccsd', cd.get_cwd(), "CCSD", destroy_h=True)
 
 
 # def test_contraction_categorized_5():

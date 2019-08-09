@@ -1,86 +1,120 @@
+import os
 from dsrg_generator.helper.file_utils import multi_gsub
 from dsrg_generator.phys_op_contraction import categorize_contractions
 
 
-def save_terms_ambit_functions(input_terms, func_name, path_dir, template, namespace="MRDSRG_SO"):
-    out_terms = categorize_contractions(input_terms)
+def save_terms_ambit_functions(input_terms, func_name, path_dir, namespace, add_t_dagger=True, destroy_h=False):
+    """
+    Write ambit functions in forte using ambit_template in the forte_templates folder.
+    :param input_terms: a list of terms
+    :param func_name: the name of major function
+    :param path_dir: the directory where all generated functions will be saved to
+    :param namespace: the class name of the functions, used as C++ headers as well
+    :param add_t_dagger: add Hermitian conjugate of the results at the end of the function
+    :param destroy_h: use H1, H2, ... as temp intermediates to add Hermitian conjugate
+    """
+    cat_cons = categorize_contractions(input_terms)
 
-    tensor_ordering = {f"H{i}": i for i in range(10)}
-    tensor_ordering.update({f"T{i - 100}": i for i in range(100, 110)})
-    tensor_ordering.update({f"C{i - 1000}": i for i in range(1000, 1010)})
-    types = {i: 'BlockedTensor&' if '0' not in i else 'double&' for i in tensor_ordering}
+    tensor_ordering = {f"H{i}": i for i in range(1, 10)}
+    tensor_ordering.update({f"T{i}": i + 100 for i in range(1, 10)})
+    tensor_ordering.update({f"C{i}": i + 200 for i in range(10)})
+    tensor_types = {i: 'double' if i == 'C0' else 'BlockedTensor' for i in tensor_ordering}
 
     func_calls = []
-    footprints = []
+    func_declarations = []
     func_tensors = set()
+    func_targets = set()
 
-    for block in out_terms.keys():
-        block_name = '0' if block == '' else block
+    for block in cat_cons.keys():
+        t, c, call, declare = save_terms_blocks_ambit_function(cat_cons[block], block, tensor_ordering, func_name,
+                                                               namespace, path_dir)
+        func_tensors.update(t)
+        func_targets.add(c)
+        func_calls.append(call)
+        func_declarations.append(declare)
 
-        func_str, func_call, tensors, func_footprint = terms_ambit_block(out_terms[block], block_name, tensor_ordering, func_name, namespace)
-        func_calls.append(func_call)
-        func_tensors.update(tensors)
-        footprints.append(func_footprint)
-
-        filename = f'{path_dir}/{func_name}_{block_name}.cc'
-        input_string = multi_gsub({"HEADERS": f'#include {namespace}.h'.lower(), "CPP_FUNCTIONS": func_str},
-                                  template)
-        with open(filename, 'w') as f:
-            f.write(input_string)
-        # print(func_str)
+    if any(f'H{i[1:]}' not in func_tensors for i in func_targets if i != 'C0'):
+        destroy_h = False
 
     func_tensors = sorted(func_tensors, key=lambda x: tensor_ordering[x])
-    func_tensors_str = ", ".join(f"{types[i]} {i}" for i in func_tensors)
-    footprints.append(f'void {func_name}(double factor, {func_tensors_str});')
-    func = f"void {namespace}::{func_name}(double factor, {func_tensors_str}) {{\n    "
+    func_targets = sorted(func_targets, key=lambda x: tensor_ordering[x])
+    footprint = f'double factor, {", ".join(f"{tensor_types[i]}& {i}" for i in func_tensors + func_targets)}'
 
-    c = [i for i in func_tensors if 'C' in i and '0' not in i]
+    indent = '\n    '
+    func = f'void {namespace}::{func_name}({footprint}) {{' + indent
 
-    prefix = [] if 'C0' not in func_tensors else ['C0 = 0.0;']
-    for i in c:
-        prefix.append(f'{i}.zero();')
+    prefix = []
+    scale = []
+    for i in func_targets:
+        if i == 'C0':
+            prefix.append('C0 = 0.0;')
+            scale.append('C0 *= factor;')
+        else:
+            prefix.append(f'{i}.zero();')
+            scale.append(f'{i}.scale(factor);')
 
-    func += "\n    ".join(prefix) + '\n\n    '
+    suffix = []
+    if add_t_dagger:
+        for i in func_targets:
+            n_body = int(i[1:])
+            upper = ','.join(f'g{i}' for i in range(n_body))
+            lower = ','.join(f'g{i}' for i in range(n_body, 2 * n_body))
 
-    func += "\n    ".join(func_calls) + '\n\n    '
+            if i == 'C0':
+                suffix.append('C0 *= 2.0;')
+                if not destroy_h:
+                    suffix.append('BlockedTensor temp;')
+            else:
+                name = f'H{n_body}'
+                if not destroy_h:
+                    b = 'g' * (2 * n_body)
+                    suffix.append(f'temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {{"{b}"}});')
+                    name = 'temp'
 
-    suffix = [] if 'C0' not in func_tensors else ['C0 *= 2.0;']
-    if c:
-        suffix.append('BlockedTensor temp;')
-    for i in c:
-        n_body = int(i[1:])
-        upper = ','.join(f'g{i}' for i in range(n_body))
-        lower = ','.join(f'g{i}' for i in range(n_body, 2 * n_body))
-        b = 'g' * (2 * n_body)
-        suffix.append(f'temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {{"{b}"}});')
-        suffix.append(f'temp[{upper},{lower}] = {i}[{upper},{lower}];')
-        suffix.append(f'{i}[{upper},{lower}] += temp[{lower},{upper}];')
-    func += "\n    ".join(suffix) + '\n}'
+                suffix.append(f'{name}["{upper},{lower}"] = {i}["{upper},{lower}"];')
+                suffix.append(f'{i}["{upper},{lower}"] += {name}["{lower},{upper}"];')
+
+    func += indent.join(prefix) + '\n' + indent
+    func += indent.join(func_calls) + '\n'
+    if suffix:
+        func += indent
+    func += indent.join(suffix)
+    func += '\n}'
 
     filename = f'{path_dir}/{func_name}.cc'
+    template = open(os.path.dirname(os.path.abspath(__file__)) + '/forte_templates/ambit_template').read()
     input_string = multi_gsub({"HEADERS": f'#include {namespace}.h'.lower(), "CPP_FUNCTIONS": func}, template)
     with open(filename, 'w') as f:
         f.write(input_string)
-    # print(func)
 
-    filename = f'{path_dir}/{func_name}_append.h'
+    filename = f'{path_dir}/{func_name}_functions.h'
     with open(filename, 'w') as f:
-        f.write('\n'.join(footprints))
-    # print('\n'.join(footprints))
+        f.write(f'void {func_name}({footprint});\n')
+        f.write('\n'.join(func_declarations))
 
 
-def terms_ambit_block(perm_terms, block, tensor_ordering, func_name, namespace):
+def save_terms_blocks_ambit_function(perm_terms, block, tensor_ordering, func_name, namespace, path_dir):
+    """
+    Write ambit functions in forte using ambit_template in the forte_templates folder for each space block.
+    :param perm_terms: a map from permutation to a list of terms
+    :param block: a string for the space block of given perm_terms
+    :param tensor_ordering: a map for tensor ordering, e.g., {'H1': 1, 'H2': 2, 'C0': 10, ...}
+    :param func_name: the name of major function for writing to disk
+    :param namespace: the class name where func_name belongs
+    :param path_dir: the directory where the generated function will be saved to
+    :return: {contracted tensor names}, target tensor name, string for function call, string for declaration
+    """
     target = f"C{len(block) // 2}"
-    do_temp = False
-    tensors = set()
-    out = ""
+    if block == '':
+        block = '0'
 
-    init_temp = True
+    tensors = set()
+    initiate_temp = True
+
+    out = ""
+    indent = "\n    "
 
     for perm, terms in perm_terms.items():
-        if perm:
-            do_temp = True
-
         for term in terms:
             for tensor in term.list_of_tensors:
                 tensors.add(f"{tensor.name}{tensor.n_body}")
@@ -89,67 +123,34 @@ def terms_ambit_block(perm_terms, block, tensor_ordering, func_name, namespace):
         for i, term in enumerate(terms):
             ambit = ""
             if perm and i == 0:
-                if init_temp:
-                    init_temp = False
+                if initiate_temp:
+                    initiate_temp = False
                     ambit = f'temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {{"{block}"}});\n'
                 else:
                     ambit = 'temp.zero();\n'
 
             ambit += term.ambit(ignore_permutations=(i != i_last), init_temp=False, declared_temp=True)
-            ambit = "\n    ".join(ambit.split('\n'))
-            out += '\n    ' + ambit
-        if perm == '':
-            out += '\n'
+            ambit = indent.join(ambit.split('\n'))
+            out += indent + ambit.strip()
+        out += '\n'
 
     tensors = sorted(tensors, key=lambda x: tensor_ordering[x])
-    tensors_str = ", ".join(f"BlockedTensor& {i}" for i in tensors)
-    tensors_str += ', double& C0' if target == 'C0' else f', BlockedTensor& {target}'
+    func_footprint = ", ".join(f"BlockedTensor& {i}" for i in tensors)
+    func_footprint += ', double& C0' if target == 'C0' else f', BlockedTensor& {target}'
 
-    func_call = f"{func_name}_{block}({tensors_str})"
-    func = f"void {namespace}::{func_call} {{"
+    func = f"void {namespace}::{func_name}_{block}({func_footprint}) {{"
+    if not initiate_temp:
+        func += indent + "BlockedTensor temp;\n"
 
-    if do_temp:
-        func += "\n    BlockedTensor temp;\n"
-    if out[-1] != '\n':
-        out = out[:-4]
+    out = func + out + '}'
 
-    out = func + out + '}\n'
+    template = open(os.path.dirname(os.path.abspath(__file__)) + '/forte_templates/ambit_template').read()
+    filename = f'{path_dir}/{func_name}_{block}.cc'
+    input_string = multi_gsub({"HEADERS": f'#include {namespace}.h'.lower(), "CPP_FUNCTIONS": out}, template)
+    with open(filename, 'w') as f:
+        f.write(input_string)
 
-    return out, f"{func_name}_{block}({', '.join(tensors + [target])});", tensors + [target], f"void {func_call};"
+    func_call = f"{func_name}_{block}({', '.join(tensors + [target])});"
+    func_declare = f"void {func_name}_{block}({func_footprint});"
 
-    # # figure out levels of Hamiltonian, ClusterAmplitudes, and Cumulants for each block
-    # tensor_levels = {}
-    # total_levels = [set(), set(), set()]
-    # for block in out_terms.keys():
-    #     H_levels, T_levels = set(), set()
-    #     for perm, terms in out_terms[block].items():
-    #         for term in terms:
-    #             for tensor in term.list_of_tensors:
-    #                 n_body = tensor.n_body
-    #                 if isinstance(tensor, Hamiltonian):
-    #                     H_levels.add(n_body)
-    #                 elif isinstance(tensor, ClusterAmplitude):
-    #                     T_levels.add(n_body)
-    #                 else:
-    #                     continue
-    #     tensor_levels[block] = [H_levels, T_levels]
-    #     total_levels[0].union(H_levels)
-    #     total_levels[1].union(T_levels)
-    #     total_levels[2].add(len(block) // 2)
-    #
-    # title_H = ",".join([f"BlockedTensor& H{i}" for i in sorted(total_levels[0])])
-    # title_T = ",".join([f"BlockedTensor& T{i}" for i in sorted(total_levels[1])])
-    # C0 = 0 in total_levels[2]
-    # Cn = [f"C{i}" for i in sorted(total_levels[2]) if i != 0]
-    # title_C = "" if not C0 else "double& C0, "
-    # title_C += ",".join([f"BlockedTensor& {i}" for i in Cn])
-    # resetC = "" if not C0 else "C0 = 0.0;\n"
-    # resetC += "\n".join([f"{i}.zero();" for i Cn])
-    # prefix = f"""void {class_name}::{func_name}(double factor, {title_H}, {title_T}, {title_C}) {{
-    # {resetC}
-    # BlockedTensor temp;""" + "\n" * 2
-    #
-    # scaleC = "" if not C0 else "C0 *= factor;\n"
-    # scaleC += "\n".join([f"{i}.scale(factor);" for i in Cn])
-    # addC = "" if not C0 else "C0 *= 2.0;\n"
-    # addC +=
+    return tensors, target, func_call, func_declare

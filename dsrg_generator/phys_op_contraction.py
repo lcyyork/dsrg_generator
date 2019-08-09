@@ -195,8 +195,8 @@ def cluster_operators(levels, start, unitary=True, single_reference=True):
     return amps
 
 
-def linear_commutator(left_terms, cluster_levels, scale_factor, min_n_open, max_n_open, start,
-                      n_process=1, unitary=True, max_cu=1, for_commutator=True, single_reference=True):
+def linear_commutator_amp(left_terms, cluster_levels, scale_factor, min_n_open, max_n_open, start,
+                          n_process=1, unitary=True, max_cu=3, for_commutator=True, single_reference=True):
     """
     Compute the commutator between the input list of terms and the cluster operators [left_term, T].
     :param left_terms: a list of Terms appear at the first entry of the commutator
@@ -212,11 +212,29 @@ def linear_commutator(left_terms, cluster_levels, scale_factor, min_n_open, max_
     :param single_reference: use single-reference labels if True
     :return: a list of contracted Term objects
     """
+    return linear_commutator(left_terms, cluster_operators(cluster_levels, start, unitary, single_reference),
+                             scale_factor, min_n_open, max_n_open, max_cu, n_process, for_commutator)
+
+
+def linear_commutator(left_terms, right_terms, scale_factor, min_n_open, max_n_open,
+                      max_cu=3, n_process=1, for_commutator=True):
+    """
+    Compute the commutator between left and right terms.
+    :param left_terms: a list of Term objects at the first entry of the commutator
+    :param right_terms: a list of Term objects at the second entry of the commutator
+    :param scale_factor: the scale factor for the commutator
+    :param min_n_open: min number of open indices for contractions of each single commutator
+    :param max_n_open: max number of open indices for contractions of each single commutator
+    :param max_cu: the max cumulant level
+    :param n_process: the number of process for multiprocessing
+    :param for_commutator: ignore disconnected terms if True
+    :return: a list of contracted Term objects
+    """
     out = []
-    for right in cluster_operators(cluster_levels, start, unitary, single_reference):
-        for left in left_terms:
+    for left in left_terms:
+        for right in right_terms:
             out += single_commutator(left, right, max_cu, max_n_open, min_n_open, scale_factor,
-                                     for_commutator, True, n_process)
+                                     for_commutator, n_process=n_process)
     return combine_terms(out)
 
 
@@ -310,18 +328,9 @@ def bch_cc_rsc(nested_level, cluster_levels, max_cu_levels, n_opens, for_commuta
         if not (isinstance(n[0], int) and isinstance(n[1], int)):
             raise ValueError(f"Invalid element in n_opens: {n} contains non-integer elements")
 
-    hole_label = 'c' if single_reference else 'h'
-    particle_label = 'v' if single_reference else 'p'
-
     max_amp = max(cluster_levels) * 2
-    amps = [[cluster_operator(k, hole_label=hole_label, particle_label=particle_label,
-                              start=(max_amp * i)) for k in cluster_levels]
+    amps = [cluster_operators(cluster_levels, start=(i * max_amp), unitary=unitary, single_reference=single_reference)
             for i in range(nested_level)]
-    if unitary:
-        for i in range(nested_level):
-            amps[i] += [cluster_operator(k, excitation=False, scale_factor=-1.0,
-                                         hole_label=hole_label, particle_label=particle_label, start=(max_amp * i))
-                        for k in cluster_levels]
 
     out = defaultdict(list)
 

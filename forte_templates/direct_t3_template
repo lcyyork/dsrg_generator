@@ -1,0 +1,34 @@
+HEADERS
+
+using namespace psi;
+
+namespace forte {
+
+void NAMESPACE::FUNCNAME_direct_t3(BlockedTensor& H1, BlockedTensor& H2) {
+    BlockedTensor C3 = ambit::BlockedTensor::build(ambit::CoreTensor, "T3 new", {"cccvvv"});
+    BlockedTensor temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {"cccvvv"});
+
+    CPP_EXPRESSIONS
+
+    C3.iterate([&](const std::vector<size_t>& i, const std::vector<SpinType>&, double& value) {
+        value *= renormalized_denominator(Fd[i[0]] + Fd[i[1]] + Fd[i[2]] - Fd[i[3]] - Fd[i[4]] -
+                                          Fd[i[5]]);
+    });
+
+    temp["ijkabc"] = T3["ijkabc"];
+
+    T3.iterate([&](const std::vector<size_t>& i, const std::vector<SpinType>&, double& value) {
+        double delta = Fd[i[0]] + Fd[i[1]] + Fd[i[2]] - Fd[i[3]] - Fd[i[4]] - Fd[i[5]];
+        value *= std::exp(-s_ * delta * delta);
+    });
+
+    C3["ijkabc"] -= T3["ijkabc"];
+    rms_t3 = C3.norm();
+
+    T3["ijkabc"] = C3["ijkabc"] + temp["ijkabc"];
+
+    // norm and max
+    T3max = T3.norm(0), T3norm = T3.norm();
+}
+
+} // namespace forte

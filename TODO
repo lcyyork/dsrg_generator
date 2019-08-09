@@ -1,0 +1,6 @@
+1. contractions wrt pure vacuum
+2. more flexible term class (no check for connectivity)
+3. add conversions between cumulants and densities
+4. gradient and diagonal hessian wrt to T
+5. orbital gradient for Hamiltonian
+6. faster tensor canonicalization

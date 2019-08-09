@@ -154,3 +154,6 @@ def save_terms_blocks_ambit_function(perm_terms, block, tensor_ordering, func_na
     func_declare = f"void {func_name}_{block}({func_footprint});"
 
     return tensors, target, func_call, func_declare
+
+
+def

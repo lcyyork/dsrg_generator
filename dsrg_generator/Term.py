@@ -1083,6 +1083,56 @@ class Term:
         """
         return self.make_ddca(self.sq_op.n_ops, self.sq_op.n_ops, single_ref)
 
+    def gradient_t(self):
+        if self.n_body != 0:
+            raise NotImplementedError("NOT available yet")
+
+        clusters = []
+        non_clusters = []
+
+        for tensor in self.list_of_tensors:
+            if isinstance(tensor, ClusterAmplitude):
+                clusters.append(tensor)
+            else:
+                non_clusters.append(tensor)
+
+        for i, t in enumerate(clusters):
+            list_of_tensors = non_clusters + clusters[:i] + clusters[i + 1:]
+            sq_op = SecondQuantizedOperator(t.lower_indices, t.upper_indices)
+            yield Term(list_of_tensors, sq_op, self.coeff).canonicalize()
+
+    def diagonal_hessian_t(self):
+        cluster = None
+        non_clusters = []
+
+        for tensor in self.list_of_tensors:
+            if isinstance(tensor, ClusterAmplitude) and tensor.n_body == self.n_body:
+                if cluster is not None:
+                    raise NotImplementedError
+                cluster = tensor
+            else:
+                non_clusters.append(tensor)
+
+        if cluster is None:
+            return 0.0, [], self.sq_op.make_empty()
+
+        replacement = {i: i for i in self.indices_set}
+
+        if [i.space for i in cluster.upper_indices] == [i.space for i in self.sq_op.upper_indices]:
+            for i, j in zip(cluster.indices(), self.sq_op.indices()):
+                replacement[i] = j
+        else:
+            for i, j in zip(cluster.indices(), self.sq_op.indices(False)):
+                replacement[i] = j
+
+        list_of_tensors = self._replace_tensors_indices(non_clusters, replacement)
+
+        try:
+            term = Term(list_of_tensors, self.sq_op, self.coeff)
+        except ValueError:
+            term = self.coeff, list_of_tensors, self.sq_op
+        return term
+
 #
 # def read_latex_term(line):
 #     sp = line.split()

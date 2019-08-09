@@ -4,7 +4,7 @@ using namespace psi;
 
 namespace forte {
 
-void NAMESPACE::FUNCNAME_direct_t3(BlockedTensor& H1, BlockedTensor& H2) {
+void NAMESPACE::FUNC_NAME_direct_t3(FUNC_VARIABLES) {
     BlockedTensor C3 = ambit::BlockedTensor::build(ambit::CoreTensor, "T3 new", {"cccvvv"});
     BlockedTensor temp = ambit::BlockedTensor::build(ambit::CoreTensor, "temp", {"cccvvv"});
 

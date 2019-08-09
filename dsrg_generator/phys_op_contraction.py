@@ -442,7 +442,7 @@ def categorize_contractions(terms):
     """
     space_perm_repr = defaultdict(list)  # (space, permutation) being the key
     for term in terms:
-        space_str = "".join([i.space for i in term.sq_op.indices()])
+        space_str = "".join([i.space for i in term.sq_op.indices(False)])
         n_perm, perm_str, sq_op_str = term.sq_op.latex_permute_format(*term.perm_partition_open())
         space_perm_repr[(space_str, perm_str)].append(term)
 

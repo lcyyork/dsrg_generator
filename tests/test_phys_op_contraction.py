@@ -7,7 +7,7 @@ from dsrg_generator.phys_op_contraction import contract_terms, combine_terms
 from dsrg_generator.phys_op_contraction import single_commutator, recursive_single_commutator
 from dsrg_generator.phys_op_contraction import bch_cc_rsc, nested_commutator_cc
 from dsrg_generator.phys_op_contraction import print_terms_ambit, print_terms_latex
-from dsrg_generator.write_forte_functions import save_terms_ambit_functions
+from dsrg_generator.write_forte_functions import save_terms_ambit_functions, save_direct_t3
 
 
 make_tensor = Tensor.make_tensor
@@ -187,18 +187,23 @@ def test_nested_cc_2():
     # assert len(d) == len(ref)
 
 
-def test_print_ambit_functions():
-    import os
+def test_save_ambit_functions():
     from dsrg_generator.helper.file_utils import ChangeDir
-
-    # template = open(os.getcwd() + f'/../forte_templates/ambit_template').read()
+    from dsrg_generator.phys_op_contraction import categorize_contractions
 
     with ChangeDir('ccsd') as cd:
-
         a = [i for n in range(1, 5)
              for i in nested_commutator_cc(n, [1, 2], 1, max_n_open=4, single_reference=True)]
+        a = combine_terms([i for term in a for i in term.expand_composite_indices(True)])
 
-        save_terms_ambit_functions(a, 'ccsd', cd.get_cwd(), "CCSD", destroy_h=True)
+        save_terms_ambit_functions(a, 'ccsd', "CCSD", cd.get_cwd(), destroy_h=True)
+
+        a = [i for n in range(1, 5)
+             for i in nested_commutator_cc(n, [1, 2], 1, min_n_open=6, max_n_open=6,
+                                           single_reference=True, n_process=4)]
+        a = [term.make_excitation(True) for term in a if not term.is_void()]
+
+        save_direct_t3(categorize_contractions(a)['cccvvv'], 'ccsd', 'CCSD', cd.get_cwd())
 
 
 # def test_contraction_categorized_5():

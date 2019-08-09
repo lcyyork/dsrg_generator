@@ -3,13 +3,13 @@ from dsrg_generator.helper.file_utils import multi_gsub
 from dsrg_generator.phys_op_contraction import categorize_contractions
 
 
-def save_terms_ambit_functions(input_terms, func_name, path_dir, namespace, add_t_dagger=True, destroy_h=False):
+def save_terms_ambit_functions(input_terms, func_name, namespace, path_dir, add_t_dagger=True, destroy_h=False):
     """
     Write ambit functions in forte using ambit_template in the forte_templates folder.
     :param input_terms: a list of terms
     :param func_name: the name of major function
-    :param path_dir: the directory where all generated functions will be saved to
     :param namespace: the class name of the functions, used as C++ headers as well
+    :param path_dir: the directory where all generated functions will be saved to
     :param add_t_dagger: add Hermitian conjugate of the results at the end of the function
     :param destroy_h: use H1, H2, ... as temp intermediates to add Hermitian conjugate
     """
@@ -156,4 +156,42 @@ def save_terms_blocks_ambit_function(perm_terms, block, tensor_ordering, func_na
     return tensors, target, func_call, func_declare
 
 
-def
+def save_direct_t3(perm_terms, func_name, namespace, path_dir):
+    """
+    Write ambit functions in forte for T3 amplitudes using direct_t3_template in the forte_templates folder.
+    :param perm_terms: a map from permutation to a list of terms
+    :param func_name: the name of major function for writing to disk
+    :param namespace: the class name where func_name belongs
+    :param path_dir: the directory where the generated function will be saved to
+    """
+    tensors = set()
+
+    cpp_func = ''
+    indent = '\n    '
+
+    for perm, terms in perm_terms.items():
+        for term in terms:
+            for tensor in term.list_of_tensors:
+                tensors.add(f"{tensor.name}{tensor.n_body}")
+
+        i_last = len(terms) - 1
+        for i, term in enumerate(terms):
+            ambit = ""
+            if perm and i == 0:
+                ambit = 'temp.zero();\n'
+
+            ambit += term.ambit(ignore_permutations=(i != i_last), init_temp=False, declared_temp=True)
+            ambit = indent.join(ambit.split('\n'))
+            cpp_func += indent + ambit.strip()
+        cpp_func += '\n'
+
+    tensors = sorted(tensors)
+    func_vars = ", ".join(f"BlockedTensor& {i}" for i in tensors)
+
+    template = open(os.path.dirname(os.path.abspath(__file__)) + '/forte_templates/direct_t3_template').read()
+    filename = f'{path_dir}/{func_name}_direct_t3.cc'
+    input_string = multi_gsub({"HEADERS": f'#include {namespace}.h'.lower(), "NAMESPACE": namespace,
+                               "FUNC_NAME": func_name, "FUNC_VARIABLES": func_vars, "CPP_EXPRESSIONS": cpp_func},
+                              template)
+    with open(filename, 'w') as f:
+        f.write(input_string)

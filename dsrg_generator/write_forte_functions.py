@@ -83,7 +83,7 @@ def save_terms_ambit_functions(input_terms, func_name, namespace, path_dir, add_
 
     filename = f'{path_dir}/{func_name}.cc'
     template = open(os.path.dirname(os.path.abspath(__file__)) + '/forte_templates/ambit_template').read()
-    input_string = multi_gsub({"HEADERS": f'#include {namespace}.h'.lower(), "CPP_FUNCTIONS": func}, template)
+    input_string = multi_gsub({"HEADERS": f'#include "{namespace}.h"'.lower(), "CPP_FUNCTIONS": func}, template)
     with open(filename, 'w') as f:
         f.write(input_string)
 
@@ -146,7 +146,7 @@ def save_terms_blocks_ambit_function(perm_terms, block, tensor_ordering, func_na
 
     template = open(os.path.dirname(os.path.abspath(__file__)) + '/forte_templates/ambit_template').read()
     filename = f'{path_dir}/{func_name}_{block}.cc'
-    input_string = multi_gsub({"HEADERS": f'#include {namespace}.h'.lower(), "CPP_FUNCTIONS": out}, template)
+    input_string = multi_gsub({"HEADERS": f'#include "{namespace}.h"'.lower(), "CPP_FUNCTIONS": out}, template)
     with open(filename, 'w') as f:
         f.write(input_string)
 
@@ -190,7 +190,7 @@ def save_direct_t3(perm_terms, func_name, namespace, path_dir):
 
     template = open(os.path.dirname(os.path.abspath(__file__)) + '/forte_templates/direct_t3_template').read()
     filename = f'{path_dir}/{func_name}_direct_t3.cc'
-    input_string = multi_gsub({"HEADERS": f'#include {namespace}.h'.lower(), "NAMESPACE": namespace,
+    input_string = multi_gsub({"HEADERS": f'#include "{namespace}.h"'.lower(), "NAMESPACE": namespace,
                                "FUNC_NAME": func_name, "FUNC_VARIABLES": func_vars, "CPP_EXPRESSIONS": cpp_func},
                               template)
     with open(filename, 'w') as f:

@@ -50,6 +50,25 @@ def dyall_hamiltonian():
     return [i for i in hamiltonian_operator(1).make_one_body_diagonal(False)] + [v]
 
 
+def fink_hamiltonian(single_reference):
+    """
+    Return the Fink Hamiltonian (not combined for mixed spaces).
+    :param single_reference: use single-reference indices if True
+    :return: a list of terms
+    """
+    h1 = [i for i in hamiltonian_operator(1).make_one_body_diagonal(single_reference)]
+    h2 = []
+    for term in hamiltonian_operator(2).expand_composite_indices(single_reference):
+        upper_count, lower_count = defaultdict(int), defaultdict(int)
+        for i in term.sq_op.upper_indices:
+            upper_count[i.space] += 1
+        for i in term.sq_op.lower_indices:
+            lower_count[i.space] += 1
+        if upper_count == lower_count:
+            h2.append(term)
+    return h1 + h2
+
+
 def cluster_operator(k, start=0, excitation=True, name='T', scale_factor=1.0,
                      hole_label='h', particle_label='p', indices_type='spin-orbital'):
     """

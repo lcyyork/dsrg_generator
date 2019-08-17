@@ -1063,12 +1063,13 @@ class Term:
 
             yield Term(list_of_tensors, sq_op, self.coeff * sign).canonicalize()
 
-    def make_ddca(self, max_core, max_virt, single_ref):
+    def make_ddca(self, max_core, max_virt, single_ref, start=0):
         """
         Apply distinguished diagonal component approximation to this term.
         :param max_core: the max number of core indices kept
         :param max_virt: the max number of virtual indices kept
         :param single_ref: ignore active indices
+        :param start: the starting number for labeling indices
         :return: yield filtered terms
         """
         indices_0 = self.sq_op.indices()
@@ -1083,24 +1084,27 @@ class Term:
                 continue
 
             replacement = {}
-            next_index_number = {i: 0 for i in self.next_index_number.keys()}
+            next_index_number = {i: start for i in self.next_index_number.keys()}
             for index_0, space in zip(indices_0, spaces):
                 replacement[index_0] = self._generate_next_index(space, next_index_number)
             for i in self.indices_set:
                 if i not in replacement:
                     replacement[i] = self._generate_next_index(i.space, next_index_number)
 
-            sign, list_of_tensors, sq_op = self._relabel_indices(replacement)
+            sq_op = Term._replace_sq_op_indices(self.sq_op, replacement)
 
-            yield Term(list_of_tensors, sq_op, self.coeff * sign).canonicalize()
+            list_of_tensors = Term._replace_tensors_indices(self.list_of_tensors, replacement)
 
-    def expand_composite_indices(self, single_ref):
+            yield Term(list_of_tensors, sq_op, self.coeff)
+
+    def expand_composite_indices(self, single_ref, start=0):
         """
         Expand composite indices in the SecondQuantizedOperator of this term.
         :param single_ref: ignore active indices
+        :param start: the starting number for labeling indices
         :return: yield expanded terms
         """
-        return self.make_ddca(self.sq_op.n_ops, self.sq_op.n_ops, single_ref)
+        return self.make_ddca(self.sq_op.n_ops, self.sq_op.n_ops, single_ref, start)
 
     def gradient_t(self):
         if self.n_body != 0:

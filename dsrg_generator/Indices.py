@@ -388,7 +388,7 @@ class IndicesAntisymmetric(Indices):
             return 1, ""
         else:
             perm = ' / '.join([' '.join([i.latex() for i in indices]) for indices in part])
-            return n_perm, f"{{\\cal P}}({perm})"
+            return n_perm, f"{{\\cal P}} ( {perm} )"
 
     def ambit_permute_format(self, part):
         """

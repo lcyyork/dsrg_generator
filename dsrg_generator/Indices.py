@@ -276,12 +276,23 @@ class Indices:
         self._is_valid_operand(other)
         return not self.indices_set.isdisjoint(other.indices_set)
 
+    def _is_valid_partition(self, part):
+        """
+        Test if the input partition list is valid.
+        :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
+        """
+        if not all(isinstance(i, Index) for block in part for i in block):
+            raise TypeError(f"Invalid partition of indices: not of type 'Index'")
+        if not all(i in self.indices_set for block in part for i in block):
+            raise ValueError(f"Invalid partition of indices: {part} contains indices not in {self.indices}")
+
     def n_multiset_permutation(self, part):
         """
         Compute the number of multiset permutations.
         :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
         :return: the number of multiset permutations
         """
+        self._is_valid_partition(part)
         if not self.exist_permute_format(part):
             return 1
         n = len(part)
@@ -296,6 +307,7 @@ class Indices:
         :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
         :return: always False for non-antisymmetric indices
         """
+        self._is_valid_partition(part)
         return False
 
     def latex_permute_format(self, part):
@@ -304,6 +316,7 @@ class Indices:
         :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
         :return: the number of multiset permutations and a string of permutation for latex
         """
+        self._is_valid_partition(part)
         return 1, ""
 
     def ambit_permute_format(self, part):
@@ -312,6 +325,7 @@ class Indices:
         :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
         :return: sign change, a string of permutation for ambit
         """
+        self._is_valid_partition(part)
         yield 1, ",".join(map(str, self.indices))
 
     @property
@@ -373,6 +387,7 @@ class IndicesAntisymmetric(Indices):
         :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
         :return: True if the partition of indices yields a multiset permutation greater than one
         """
+        self._is_valid_partition(part)
         if self.size == 0:
             return False
         return len(part) != 1
@@ -383,6 +398,7 @@ class IndicesAntisymmetric(Indices):
         :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
         :return: the number of multiset permutations and a string of permutation for latex
         """
+        self._is_valid_partition(part)
         n_perm = self.n_multiset_permutation(part)
         if n_perm == 1:
             return 1, ""
@@ -396,10 +412,12 @@ class IndicesAntisymmetric(Indices):
         :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
         :return: sign change, a string of permutation for ambit
         """
+        self._is_valid_partition(part)
         n = len(part)
         list_index = []
         for i in range(n):
             list_index += [i] * len(part[i])
+        spin = [i.is_beta() for i in self.indices]
 
         for perm in multiset_permutations(list_index):
             next_available = [0] * n
@@ -407,6 +425,8 @@ class IndicesAntisymmetric(Indices):
             for i in perm:
                 list_of_indices.append(part[i][next_available[i]])
                 next_available[i] += 1
+            if spin != [i.is_beta() for i in list_of_indices]:
+                continue
             permuted = self.__class__(list_of_indices)
             yield (-1) ** self.count_permutations(permuted), ",".join(map(str, list_of_indices))
 
@@ -467,35 +487,53 @@ class IndicesSpinIntegrated(IndicesAntisymmetric):
     def spin_pure(self):
         return self._spin_pure
 
-    def exist_permute_format(self, part):
-        """
-        Test if the indices partitioning is non-trivial (i.e., 1).
-        :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
-        :return: True if the partition of indices yields a multiset permutation greater than one
-        """
-        if not self.spin_pure:
-            return False
-        else:
-            return super().exist_permute_format(part)
-
-    def latex_permute_format(self, part):
-        """
-        Compute the multiset-permutation form of this Indices object for latex.
-        :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
-        :return: the number of multiset permutations and a string of permutation for latex
-        """
-        if not self.spin_pure:
-            return 1, ""
-        else:
-            return super().latex_permute_format(part)
-
-    def ambit_permute_format(self, part):
-        """
-        Generate the multiset-permutation form and the corresponding sign of this Indices object for ambit.
-        :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
-        :return: sign change, a string of permutation for ambit
-        """
-        if not self.spin_pure:
-            yield 1, ",".join(map(str, self.indices))
-        else:
-            yield from super().ambit_permute_format(part)
+    # def spin_mixed_n_perm(self):
+    #     """
+    #     Compute the number of permutations for spin mixed indices.
+    #     :return: the number of permutations, e.g. aabb -> 4 choose 2 = 6
+    #     """
+    #     return factorial(sum(self.spin_count)) // factorial(self.spin_count[0]) // factorial(self.spin_count[1])
+    #
+    # def n_multiset_permutation(self, part):
+    #     """
+    #     Compute the number of multiset permutations.
+    #     :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
+    #     :return: the number of multiset permutations
+    #     """
+    #     if not self.spin_pure:
+    #         return self.spin_mixed_n_perm()
+    #     else:
+    #         return super().n_multiset_permutation(part)
+    #
+    # def exist_permute_format(self, part):
+    #     """
+    #     Test if the indices partitioning is non-trivial (i.e., 1).
+    #     :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
+    #     :return: True if the partition of indices yields a multiset permutation greater than one
+    #     """
+    #     if not self.spin_pure:
+    #         return False
+    #     else:
+    #         return super().exist_permute_format(part)
+    #
+    # def latex_permute_format(self, part):
+    #     """
+    #     Compute the multiset-permutation form of this Indices object for latex.
+    #     :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
+    #     :return: the number of multiset permutations and a string of permutation for latex
+    #     """
+    #     if not self.spin_pure:
+    #         return self.spin_mixed_n_perm(), ""
+    #     else:
+    #         return super().latex_permute_format(part)
+    #
+    # def ambit_permute_format(self, part):
+    #     """
+    #     Generate the multiset-permutation form and the corresponding sign of this Indices object for ambit.
+    #     :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
+    #     :return: sign change, a string of permutation for ambit
+    #     """
+    #     if not self.spin_pure:
+    #         yield self.spin_mixed_n_perm(), ",".join(map(str, self.indices))
+    #     else:
+    #         yield from super().ambit_permute_format(part)

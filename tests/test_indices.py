@@ -122,7 +122,7 @@ def test_indices_so_latex_perm():
     part = [[Index("g2")], [Index("p0"), Index("p1")], [Index("a4")]]
     n_perm, perm = IndicesSpinOrbital("p0, p1, g2, a4").latex_permute_format(part)
     assert n_perm == 12
-    assert perm == "{\\cal P}(g_{2} / p_{0} p_{1} / a_{4})"
+    assert perm == "{\\cal P} ( g_{2} / p_{0} p_{1} / a_{4} )"
 
 
 def test_indices_so_spin():
@@ -160,7 +160,7 @@ def test_indices_si_canonical():
 
 def test_indices_si_ambit_perm():
     a = IndicesSpinIntegrated(["P0", "P1", "V2", "A3"])
-    part = [["V2"], ["P0", "P1"], ["A3"]]
+    part = [[Index("V2")], [Index("P0"), Index("P1")], [Index("A3")]]
     ref = {"P0,P1,V2,A3",
            "P0,P1,A3,V2",
            "P0,A3,P1,V2",
@@ -180,9 +180,8 @@ def test_indices_si_ambit_perm():
     assert len(ref) == 0
 
     a = IndicesSpinIntegrated(["P0", "P1", "c2", "A3"])
-    for sign, indices_str in a.ambit_permute_format(part):
-        assert sign == 1
-        assert indices_str == ",".join(map(str, a.indices))
+    with pytest.raises(ValueError):
+        list(a.ambit_permute_format(part))
 
 
 def test_indices_si_spin_pure():
@@ -200,12 +199,13 @@ def test_indices_si_alpha_beta():
 def test_indices_si_latex_permute_format():
     a = IndicesSpinIntegrated(["P0", "P1", "P2", "A3"])
     part = [["P2"], ["P0", "P1"], ["A3"]]
-    with pytest.raises(AttributeError):
+    with pytest.raises(TypeError):
         a.latex_permute_format(part)
 
     part = [[Index("P2")], [Index("P0"), Index("P1")], [Index("A3")]]
     n_perm, perm_str = a.latex_permute_format(part)
-    assert (n_perm, perm_str) == (12, '{\\cal P}(P_{2} / P_{0} P_{1} / A_{3})')
+    assert (n_perm, perm_str) == (12, '{\\cal P} ( P_{2} / P_{0} P_{1} / A_{3} )')
 
     a = IndicesSpinIntegrated(["p0", "P1", "V2", "A3"])
-    assert a.latex_permute_format(part) == (1, '')
+    with pytest.raises(ValueError):
+        list(a.ambit_permute_format(part))

@@ -291,6 +291,11 @@ class Indices:
         Compute the number of multiset permutations.
         :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
         :return: the number of multiset permutations
+
+        Notes
+        -----
+        In the above example, we need to consider all permutations of i, j, k, and l,
+        but treat i and j as equivalent indices. Thus, n_multiset_perm = 4! / 2! = 12
         """
         self._is_valid_partition(part)
         if not self.exist_permute_format(part):
@@ -329,6 +334,14 @@ class Indices:
         yield 1, ",".join(map(str, self.indices))
 
     @property
+    def alpha_indices(self):
+        raise TypeError("Only available for spin-integrated indices.")
+
+    @property
+    def beta_indices(self):
+        raise TypeError("Only available for spin-integrated indices.")
+
+    @property
     def spin_count(self):
         raise TypeError("Only available for spin-integrated indices.")
 
@@ -360,6 +373,55 @@ class IndicesSpinAdapted(Indices):
         """
         Indices.__init__(self, list_of_indices)
 
+    # def exist_permute_format(self, part):
+    #     """
+    #     Test if the indices partitioning is non-trivial (i.e., 1).
+    #     :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
+    #     :return: True if the partition of indices yields a multiset permutation greater than one
+    #     """
+    #     self._is_valid_partition(part)
+    #     if self.size == 0:
+    #         return False
+    #     return len(part) != 1
+    #
+    # def latex_permute_format(self, part):
+    #     """
+    #     Compute the multiset-permutation form of this Indices object for latex.
+    #     :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
+    #     :return: the number of multiset permutations and a string of permutation for latex
+    #     """
+    #     self._is_valid_partition(part)
+    #     n_perm = self.n_multiset_permutation(part)
+    #     if n_perm == 1:
+    #         return 1, ""
+    #     else:
+    #         perm = ' / '.join([' '.join([i.latex() for i in indices]) for indices in part])
+    #         return n_perm, f"{{\\cal P}} ( {perm} )"
+    #
+    # def ambit_permute_format(self, part):
+    #     """
+    #     Generate the multiset-permutation form and the corresponding sign of this Indices object for ambit.
+    #     :param part: a partition of indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
+    #     :return: sign change, a string of permutation for ambit
+    #     """
+    #     self._is_valid_partition(part)
+    #     n = len(part)
+    #     list_index = []
+    #     for i in range(n):
+    #         list_index += [i] * len(part[i])
+    #     spin = [i.is_beta() for i in self.indices]
+    #
+    #     for perm in multiset_permutations(list_index):
+    #         next_available = [0] * n
+    #         list_of_indices = []
+    #         for i in perm:
+    #             list_of_indices.append(part[i][next_available[i]])
+    #             next_available[i] += 1
+    #         if spin != [i.is_beta() for i in list_of_indices]:
+    #             continue
+    #         permuted = self.__class__(list_of_indices)
+    #         yield (-1) ** self.count_permutations(permuted), ",".join(map(str, list_of_indices))
+
 
 @Indices.register_subclass('antisymmetric')
 class IndicesAntisymmetric(Indices):
@@ -390,7 +452,7 @@ class IndicesAntisymmetric(Indices):
         self._is_valid_partition(part)
         if self.size == 0:
             return False
-        return len(part) != 1
+        return len(part) > 1
 
     def latex_permute_format(self, part):
         """
@@ -474,10 +536,24 @@ class IndicesSpinIntegrated(IndicesAntisymmetric):
         :param list_of_indices: list of indices (see IndicesBase)
         """
         IndicesAntisymmetric.__init__(self, list_of_indices)
-        self._spin_count = [0, 0]
+
+        self._alpha_indices, self._beta_indices = [], []
         for index in self.indices:
-            self._spin_count[index.is_beta()] += 1
+            if index.is_beta():
+                self._beta_indices.append(index)
+            else:
+                self._alpha_indices.append(index)
+
+        self._spin_count = [len(self._alpha_indices), len(self._beta_indices)]
         self._spin_pure = self._spin_count[0] == self.size or self._spin_count[1] == self.size
+
+    @property
+    def alpha_indices(self):
+        return self._alpha_indices
+
+    @property
+    def beta_indices(self):
+        return self._beta_indices
 
     @property
     def spin_count(self):

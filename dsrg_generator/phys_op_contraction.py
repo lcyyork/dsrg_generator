@@ -328,12 +328,15 @@ def bch_cc_rsc(nested_level, cluster_levels, max_cu_levels, n_opens, for_commuta
             raise ValueError(f"Invalid element in n_opens: {n} contains non-integer elements")
 
     max_amp = max(cluster_levels) * 2
-    amps = [cluster_operators(cluster_levels, start=(i * max_amp), unitary=unitary, single_reference=single_reference)
+    amps = [cluster_operators(cluster_levels, start=(i * max_amp) + 4, unitary=unitary, single_reference=single_reference)
             for i in range(nested_level)]
 
     out = defaultdict(list)
+    out[0] = combine_terms([x for x in hamiltonian_operator(1).expand_composite_indices(True)]) + \
+             combine_terms([x for x in hamiltonian_operator(2).expand_composite_indices(True)])
 
-    left_pool = [hamiltonian_operator(1), hamiltonian_operator(2)]
+    left_pool = combine_terms([x for x in hamiltonian_operator(1).expand_composite_indices(True)]) + \
+                combine_terms([x for x in hamiltonian_operator(2).expand_composite_indices(True)])
 
     for i in range(1, nested_level + 1):
         factor = 1.0 / i
@@ -346,8 +349,8 @@ def bch_cc_rsc(nested_level, cluster_levels, max_cu_levels, n_opens, for_commuta
                 out[i] += single_commutator(left, right, max_cu, max_n_open, min_n_open,
                                             factor, for_commutator, expand_hole, n_process)
 
-        out[i] = combine_terms(out[i])
-        left_pool = out[i]
+        out[i] = combine_terms([Term.from_term(term) for term in out[i]])
+        left_pool = [Term.from_term(term) for term in out[i]]
 
     return out
 

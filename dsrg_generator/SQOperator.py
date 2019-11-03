@@ -1,3 +1,4 @@
+from dsrg_generator.Indices import IndicesAntisymmetric
 from dsrg_generator.IndicesPair import IndicesPair
 
 
@@ -117,6 +118,31 @@ class SecondQuantizedOperator(IndicesPair):
         whitespace = ' ' if perm_cre and perm_ann else ''
         return n_perm_cre * n_perm_ann, perm_cre + whitespace + perm_ann, self.latex()
 
+    def permute_indices(self, p_cre, p_ann, cre_first=False):
+        """
+        Generate the multiset-permutation form for indices.
+        :param p_cre: a partition of upper indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
+        :param p_ann: a partition of lower indices, e.g., [[i,j], [k], [l]] for P(ij/k/l)
+        :param cre_first: True if creation operators comes before annihilation operators
+        :return: a tuple of (sign, creation operator string, annihilation operator string)
+
+        Examples
+        --------
+        Consider a^{p0,p1,p2}_{c0,v0,v2} with p_cre = [[p0,p1], [p2]], p_ann = [[c0], [v0], [v2]], and cre_first=0.
+        There are 3 permutations for creations (p0,p1,p2; p0,p2,p1; p2,p0,p1) and 3! permutations for annihilations.
+        Each permutation is associated to a possible sign change, e.g., sign(p0,p2,p1) = -1, sign(p2,p0,p1) = 1.
+        This function generates all possible indices permutations, such as
+        (-1, "p0,p2,p1", "c0,v0,v2"), (1, "p0,p2,p1", "c0,v2,v0"), ...
+        """
+        if self.is_empty():
+            yield 1, '', ''
+        else:
+            first, second = (self.cre_ops, self.ann_ops) if cre_first else (self.ann_ops, self.cre_ops)
+            p1, p2 = (p_cre, p_ann) if cre_first else (p_ann, p_cre)
+            for sign_1, str_1 in first.ambit_permute_format(p1):
+                for sign_2, str_2 in second.ambit_permute_format(p2):
+                    yield sign_1 * sign_2, str_1, str_2
+
     def ambit_permute_format(self, p_cre, p_ann, cre_first=False):
         """
         Generate the multiset-permutation form for ambit.
@@ -126,13 +152,10 @@ class SecondQuantizedOperator(IndicesPair):
         :return: a tuple of (sign, a string representation of operator)
         """
         if self.is_empty():
-            yield 1, ''
-        else:
-            first, second = (self.cre_ops, self.ann_ops) if cre_first else (self.ann_ops, self.cre_ops)
-            p1, p2 = (p_cre, p_ann) if cre_first else (p_ann, p_cre)
-            for sign_1, str_1 in first.ambit_permute_format(p1):
-                for sign_2, str_2 in second.ambit_permute_format(p2):
-                    yield sign_1 * sign_2, f'["{str_1},{str_2}"]'
+            return 1, ''
+
+        for sign, str_1, str_2 in self.permute_indices(p_cre, p_ann, cre_first):
+            yield sign, f'["{str_1},{str_2}"]'
 
     def generate_spin_cases(self, particle_conserving=True):
         """
@@ -155,10 +178,14 @@ class SecondQuantizedOperator(IndicesPair):
         """ Return an empty SecondQuantizedOperator. """
         return SecondQuantizedOperator(self.indices_type([]), self.indices_type([]))
 
-    def base_strong_generating_set(self, hermitian=False):
+    def base_strong_generating_set(self, hermitian=False, no_sym=False):
         """
         Return the base and strong generating set.
         :param hermitian: upper and lower indices can be swapped if True
+        :param no_sym: no symmetry if True
         :return: a tuple of (base, strong generating set)
         """
-        return super().base_strong_generating_set(False)
+        if isinstance(self.upper_indices, IndicesAntisymmetric):
+            return super().base_strong_generating_set(hermitian=False)
+        else:
+            return super().base_strong_generating_set(no_sym=True)

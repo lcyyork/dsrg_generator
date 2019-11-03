@@ -7,7 +7,7 @@ from sympy.combinatorics import Permutation
 
 from dsrg_generator.mo_space import space_priority, space_relation, space_relation_so, find_space_label
 from dsrg_generator.Index import Index
-from dsrg_generator.Indices import IndicesSpinOrbital
+from dsrg_generator.Indices import IndicesSpinOrbital, IndicesSpinIntegrated
 from dsrg_generator.Tensor import Tensor, Cumulant, ClusterAmplitude, Kronecker
 from dsrg_generator.SQOperator import SecondQuantizedOperator
 
@@ -989,9 +989,42 @@ class Term:
             try:
                 sq_op = pairs[0]
                 list_of_tensors = list(pairs[1:])
-                yield Term(list_of_tensors, sq_op, self.coeff).canonicalize_sympy()
+                yield Term(list_of_tensors, sq_op, self.coeff).canonicalize()
             except ValueError:
                 pass
+
+    def generate_singlet_adaptation(self, alpha_major=True):
+        """
+        Generate spin-adapted term from spin-integrated term.
+        :return: spin adapted terms
+        """
+        if self.sq_op.indices_type is not IndicesSpinIntegrated:
+            raise TypeError(f"Invalid indices, expected 'IndicesSpinIntegrated', given '{self.sq_op.indices_type}'.")
+
+        p_cre, p_ann = self.perm_partition_open()
+        n_perm = self.sq_op.n_multiset_permutation(p_cre, p_ann)
+
+        next_index = {**self.next_index_number}
+        replacement = {i: i for i in self.indices_set}
+        for k, v in replacement.items():
+            if v.is_beta():
+                replacement[k] = self._generate_next_index(v.space.lower(), next_index)
+
+        for sign_perm, cre, ann in self.sq_op.permute_indices(p_cre, p_ann, cre_first=True):
+            sq_op = SecondQuantizedOperator(cre, ann, 'si')
+
+            for pairs in product(*[i.generate_singlet_adaptation(replacement, alpha_major)
+                                   for i in [sq_op] + self.list_of_tensors]):
+                sign = sign_perm * pairs[0][0]
+                sq_op = SecondQuantizedOperator(pairs[0][1], pairs[0][2], 'sa')
+
+                list_of_tensors = []
+                for i, pair in enumerate(pairs[1:]):
+                    _sign, upper, lower = pair
+                    sign *= _sign
+                    list_of_tensors.append(self.list_of_tensors[i].from_indices(upper, lower, 'sa'))
+
+                yield Term(list_of_tensors, sq_op, sign * self.coeff / n_perm).canonicalize()
 
     def make_excitation(self, single_ref):
         """

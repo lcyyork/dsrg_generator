@@ -53,7 +53,7 @@ def test_latex_1():
 def test_latex_2():
     a = Term([make_tensor('H', 'g0, h1', 'g0, p1')],
              make_sq('g0, p1', 'g0, h1'))
-    ref = "1/4 & {\\cal P}(g_{0} / p_{1}) {\\cal P}(g_{0} / h_{1}) " \
+    ref = "1/4 & {\\cal P} ( g_{0} / p_{1} ) {\\cal P} ( g_{0} / h_{1} ) " \
           "H^{ g_{0} h_{1} }_{ g_{0} p_{1} } a^{ g_{0} p_{1} }_{ g_{0} h_{1} }"
     assert a.latex(delimiter=True) == ref
 
@@ -65,7 +65,7 @@ def test_latex_3():
     sq_op = make_sq('v0, v1, v2', 'c0, c1, c2')
     a = Term(list_of_tensors, sq_op, -1)
 
-    ref = "-1/18 & {\\cal P}(v_{0} / v_{1} / v_{2}) {\\cal P}(c_{0} c_{1} / c_{2}) " \
+    ref = "-1/18 & {\\cal P} ( v_{0} / v_{1} / v_{2} ) {\\cal P} ( c_{0} c_{1} / c_{2} ) " \
           "H^{ v_{3} v_{4} }_{ v_{0} c_{3} } " \
           "T^{ c_{0} c_{1} }_{ v_{1} v_{3} } " \
           "T^{ c_{2} c_{3} }_{ v_{2} v_{4} } " \
@@ -451,6 +451,50 @@ def test_generate_spin_cases_3():
         assert i in ref
         count += 1
     assert count == len(ref)
+
+
+def test_generate_spin_cases_4():
+    # a = Term([make_tensor('H', 'v2,c0', 'v0,c2'), make_tensor('t', 'c1,c2', 'v1,v2')],
+    #          make_sq('v0,v1', 'c0,c1'))
+    # print(a)
+    # print(a.latex())
+    # print(a.ambit(), '\n')
+    #
+    # for i in a.generate_spin_cases_naive():
+    #     print(i.latex())
+    # print()
+
+    a = Term([make_tensor('H', 'v2,v3', 'v0,v1'), make_tensor('t', 'c0,c1', 'v2,v3')],
+             make_sq('v0,v1', 'c0,c1'), 0.125)
+    print(a)
+    print(a.latex(), '\n')
+
+    for i in a.generate_spin_cases_naive():
+        print(i.latex())
+        print(i.ambit())
+
+    a = Term([make_tensor('H', 'p0,g0', 'c0,g1'), make_tensor('t', 'c0,h0', 'p0,p1')],
+             make_sq('g0,h0', 'g1,p1'))
+    print(a)
+    print(a.latex(), '\n')
+
+    for i in a.generate_spin_cases_naive():
+        print(i.latex())
+        print(i.ambit())
+
+    # a = Term([make_tensor('H', 'c0,c1', 'v0,c3'), make_tensor('t', 'c2,c3', 'v1,v2')],
+    #          make_sq('c0,c1,c2', 'v0,v1,v2'), 1.0/4)
+    # print(a)
+    # print(a.latex(), '\n')
+    #
+    # from dsrg_generator.phys_op_contraction import combine_terms, print_terms_ambit
+    # b = list(a.generate_spin_cases_naive())
+    # print_terms_ambit(b)
+    # c = combine_terms(b)
+    # print_terms_ambit(c)
+    # for i in :
+    #     print(i.latex())
+    #     print(i.ambit())
 
 
 def test_make_ddca():

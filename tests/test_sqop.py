@@ -118,18 +118,19 @@ def test_latex_permute_format_2():
     p_ann = [[Index('p0'), Index('p2')], [Index('a1')]]
     n_perm, perm, latex_str = a.latex_permute_format(p_cre, p_ann)
     assert n_perm == 18
-    assert perm == '{\\cal P}(g_{0} / p_{3} / v_{1}) {\\cal P}(p_{0} p_{2} / a_{1})'
+    assert perm == '{\\cal P} ( g_{0} / p_{3} / v_{1} ) {\\cal P} ( p_{0} p_{2} / a_{1} )'
     assert latex_str == 'a^{ g_{0} v_{1} p_{3} }_{ p_{0} a_{1} p_{2} }'
 
 
 def test_latex_permute_format_3():
+    # TODO: is this necessary?
     # ignore multiset permutations for mixed spin indices
     a = SecondQuantizedOperator("g0,v1,p2", "p0,a1,P2", 'spin-integrated')
     p_cre = [[Index('g0')], [Index('p2')], [Index('v1')]]
     p_ann = [[Index('p0'), Index('P2')], [Index('a1')]]
     n_perm, perm, latex_str = a.latex_permute_format(p_cre, p_ann)
     assert n_perm == 6
-    assert perm == '{\\cal P}(g_{0} / p_{2} / v_{1})'
+    assert perm == '{\\cal P} ( g_{0} / p_{2} / v_{1} )'
     assert latex_str == 'a^{ g_{0} v_{1} p_{2} }_{ p_{0} a_{1} P_{2} }'
 
 
@@ -152,6 +153,7 @@ def test_ambit_permute_format_2():
 
 
 def test_ambit_permute_format_3():
+    # TODO: is this necessary?
     # ignore all input partitions for mixed spin indices
     a = SecondQuantizedOperator("g0,G1,c2", "p0,p1,P2", 'spin-integrated')
     for pair in a.ambit_permute_format([], [], cre_first=True):

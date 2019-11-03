@@ -1,3 +1,4 @@
+from itertools import permutations, product
 from sympy.combinatorics.tensor_can import get_symmetric_group_sgs, bsgs_direct_product, get_minimal_bsgs
 from sympy.combinatorics import Permutation
 from sympy.combinatorics.perm_groups import PermutationGroup
@@ -165,6 +166,47 @@ class IndicesPair:
                 for lower_indices in self.lower_indices.generate_spin_cases():
                     yield upper_indices, lower_indices
 
+    def generate_singlet_adaptation(self, replacement, alpha_major=True):
+        """
+        Generate spin-adapted indices pair from spin-integrated indices.
+        :param replacement: a replacement map for index relabeling
+        :param alpha_major: number of α indices is assumed more than number of β indices if True
+        :return: tuple of sign, list of upper indices, list of lower indices
+
+        Notes
+        -----
+        1. The replacement map is necessary because this function does not know the entire Term.
+        2. To explain alpha_major, take ^{p0,P1,P2}_{h0,H1,H2} as an example,
+           If we want alpha major result, then it means the operator part is of type aab (a=alpha, b=beta).
+           However, the given type is abb and for singlet-adapted case abb is equal to baa (aab after permutation).
+        """
+        if self.upper_indices.n_beta() != self.lower_indices.n_beta():
+            raise ValueError(f"Inconsistent number of beta indices: {self}")
+
+        upper_indices, lower_indices, sign = self.canonicalize_indices()  # make sure beta goes after alpha
+
+        na, nb = upper_indices.spin_count
+        indices_1, indices_2 = upper_indices.alpha_indices, upper_indices.beta_indices
+        if (alpha_major and nb > na) or ((not alpha_major) and na > nb):
+            indices_1, indices_2 = indices_2, indices_1
+        i_upper = [replacement[i] for i in indices_1 + indices_2]
+
+        if self.n_body < 2:
+            yield sign, i_upper, [replacement[i] for i in lower_indices]
+        else:
+            na, nb = lower_indices.spin_count
+            indices_1, indices_2 = lower_indices.alpha_indices, lower_indices.beta_indices
+            if (alpha_major and nb > na) or ((not alpha_major) and na > nb):
+                na, nb = nb, na
+                indices_1, indices_2 = indices_2, indices_1
+
+            for a, b in product(*[permutations(range(na)), permutations((range(nb)))]):
+                sa = (-1) ** Permutation(a).inversions()
+                sb = (-1) ** Permutation(b).inversions()
+                i_lower = [replacement[indices_1[i]] for i in a]
+                i_lower += [replacement[indices_2[i]] for i in b]
+                yield sa * sb * sign, i_upper, i_lower
+
     def is_spin_conserving(self):
         """ Return True if spin Ms is preserved. """
         if self.n_upper == self.n_lower:
@@ -188,14 +230,20 @@ class IndicesPair:
         lower_indices, lower_sign = self.lower_indices.canonicalize()
         return upper_indices, lower_indices, upper_sign * lower_sign
 
-    def base_strong_generating_set(self, hermitian=True):
+    def base_strong_generating_set(self, hermitian=True, no_sym=False):
         """
         Return minimal base and strong generating set of this IndicesPair.
         :param hermitian: upper and lower indices can be swapped if True
+        :param no_sym: an identity group if True
         :return: a tuple of (base, strong generating set)
         """
         if self.size == 0:
             raise ValueError("Cannot perform BSGS on empty indices pair.")
+
+        if no_sym:
+            sym = PermutationGroup([Permutation(range(2 * self.n_body + 2))])
+            sym.schreier_sims()
+            return get_minimal_bsgs(sym.base, sym.strong_gens)
 
         if not isinstance(self.upper_indices, IndicesAntisymmetric):
             return self.sym_bsgs(hermitian)

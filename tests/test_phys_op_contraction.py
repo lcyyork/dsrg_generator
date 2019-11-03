@@ -103,24 +103,26 @@ def test_recursive_single_commutator_3():
 
 def test_bch_cc_rsc_1():
     # single-reference CCSD with recursive single commutator approximation
-    a = bch_cc_rsc(4, [1, 2], 1, (0, 4), single_reference=True, unitary=False)
-    r = sorted(i for n, terms in a.items() for i in terms)
+    a = bch_cc_rsc(4, [1, 2], 1, [(0, 6), (0, 8), (0, 8), (0, 4)],
+                   single_reference=True, unitary=False)
+    r = sorted(i for n, terms in a.items() for i in terms
+               if n != 0 and i.n_body < 3 and i.sq_op.is_possible_excitation())
     assert len(r) == 46
 
-    samples = [Term([make_tensor('H', 'v1,v2', 'g0,c2'), make_tensor('t', 'c2', 'v1'),
-                     make_tensor('t', 'c0,c1', 'v0,v2')], make_sq('g0,v0', 'c0,c1'), 0.25),
-               Term([make_tensor('H', 'c1,c2', 'g0,v2'), make_tensor('t', 'c1', 'v2'),
-                     make_tensor('t', 'c0,c2', 'v0,v1')], make_sq('v0,v1', 'g0,c0'), -0.25),
+    samples = [Term([make_tensor('H', 'v2,v3', 'v0,c2'), make_tensor('t', 'c2', 'v2'),
+                     make_tensor('t', 'c0,c1', 'v1,v3')], make_sq('v0,v1', 'c0,c1'), 0.5),
+               Term([make_tensor('H', 'c2,c3', 'v2,c0'), make_tensor('t', 'c2', 'v2'),
+                     make_tensor('t', 'c1,c3', 'v0,v1')], make_sq('v0,v1', 'c0,c1'), 0.5),
                Term([make_tensor('H', 'c2,c3', 'v2,v3'), make_tensor('t', 'c0,c1', 'v0,v2'),
-                     make_tensor('t', 'c2,c3', 'v1,v3')], make_sq('v0,v1', 'c0,c1'), -0.125),
+                     make_tensor('t', 'c2,c3', 'v1,v3')], make_sq('v0,v1', 'c0,c1'), -0.25),
                Term([make_tensor('H', 'c2,c3', 'v2,v3'), make_tensor('t', 'c0,c2', 'v0,v1'),
-                     make_tensor('t', 'c1,c3', 'v2,v3')], make_sq('v0,v1', 'c0,c1'), -0.125),
+                     make_tensor('t', 'c1,c3', 'v2,v3')], make_sq('v0,v1', 'c0,c1'), -0.25),
                Term([make_tensor('H', 'c2,c3', 'v2,v3'), make_tensor('t', 'c0', 'v2'),
                      make_tensor('t', 'c2', 'v3'), make_tensor('t', 'c1,c3', 'v0,v1')],
-                    make_sq('v0,v1', 'c0,c1'), -0.25),
+                    make_sq('v0,v1', 'c0,c1'), -0.5),
                Term([make_tensor('H', 'c2,c3', 'v2,v3'), make_tensor('t', 'c2', 'v0'),
                      make_tensor('t', 'c3', 'v2'), make_tensor('t', 'c0,c1', 'v1,v3')],
-                    make_sq('v0,v1', 'c0,c1'), -0.25)]
+                    make_sq('v0,v1', 'c0,c1'), -0.5)]
     for i in samples:
         assert i in r
 
@@ -129,30 +131,13 @@ def test_nested_cc_1():
     # single-reference CCSD equations
     a = [i for n in range(1, 5)
          for i in nested_commutator_cc(n, [1, 2], 1, max_n_open=4, single_reference=True)]
+    a_expanded = combine_terms([x.canonicalize() for term in a for x in term.expand_composite_indices(True)])
 
-    # comparing to CCSD with recursive single commutator
-    b = bch_cc_rsc(4, [1, 2], 1, (0, 4), single_reference=True, unitary=False)
-    c = sorted(i for n, terms in b.items() for i in terms)
-    assert len(a) == len(c)
-
-    d = combine_terms(a + [Term.from_term(i, flip_sign=True) for i in c])
-    ref = [Term([make_tensor('H', 'v1,v2', 'g0,c2'), make_tensor('t', 'c2', 'v1'),
-                 make_tensor('t', 'c0,c1', 'v0,v2')], make_sq('g0,v0', 'c0,c1'), 0.25),
-           Term([make_tensor('H', 'c1,c2', 'g0,v2'), make_tensor('t', 'c1', 'v2'),
-                 make_tensor('t', 'c0,c2', 'v0,v1')], make_sq('v0,v1', 'g0,c0'), -0.25),
-           Term([make_tensor('H', 'c2,c3', 'v2,v3'), make_tensor('t', 'c0,c1', 'v0,v2'),
-                 make_tensor('t', 'c2,c3', 'v1,v3')], make_sq('v0,v1', 'c0,c1'), -0.125),
-           Term([make_tensor('H', 'c2,c3', 'v2,v3'), make_tensor('t', 'c0,c2', 'v0,v1'),
-                 make_tensor('t', 'c1,c3', 'v2,v3')], make_sq('v0,v1', 'c0,c1'), -0.125),
-           Term([make_tensor('H', 'c2,c3', 'v2,v3'), make_tensor('t', 'c0', 'v2'),
-                 make_tensor('t', 'c2', 'v3'), make_tensor('t', 'c1,c3', 'v0,v1')],
-                make_sq('v0,v1', 'c0,c1'), -0.25),
-           Term([make_tensor('H', 'c2,c3', 'v2,v3'), make_tensor('t', 'c2', 'v0'),
-                 make_tensor('t', 'c3', 'v2'), make_tensor('t', 'c0,c1', 'v1,v3')],
-                make_sq('v0,v1', 'c0,c1'), -0.25)]
-    for i in d:
-        assert i in ref
-    assert len(d) == len(ref)
+    # comparing to CCSD with recursive single commutator; note that this contains higher-body intermediates
+    b = bch_cc_rsc(4, [1, 2], 1, [(0, 6), (0, 8), (0, 8), (0, 4)],
+                   single_reference=True, unitary=False)
+    b_combined = sorted(i for n, terms in b.items() for i in terms if n != 0 and i.n_body < 3)
+    assert a_expanded == b_combined
 
 
 def test_nested_cc_2():
@@ -204,6 +189,23 @@ def test_save_ambit_functions():
         a = [term.make_excitation(True) for term in a if not term.is_void()]
 
         save_direct_t3(categorize_contractions(a)['cccvvv'], 'ccsd', 'CCSD', cd.get_cwd())
+
+
+def test_singlet_adaptation():
+    """
+    C0 += (1.0 / 4.0) * H2["c0,c1,v0,v1"] * T2["c0,c1,v0,v1"];
+    C0 += 1.0 * H2["c0,C0,v0,V0"] * T2["c0,C0,v0,V0"];
+    C0 += (1.0 / 4.0) * H2["C0,C1,V0,V1"] * T2["C0,C1,V0,V1"];
+    """
+    a = [Term([make_tensor('H', 'c0,c1', 'v0,v1', 'si'), make_tensor('t', 'c0,c1', 'v0,v1', 'si')],
+              make_sq('', '', 'si'), 0.25),
+         Term([make_tensor('H', 'C0,C1', 'V0,V1', 'si'), make_tensor('t', 'C0,C1', 'V0,V1', 'si')],
+              make_sq('', '', 'si'), 0.25),
+         Term([make_tensor('H', 'c0,C1', 'v0,V1', 'si'), make_tensor('t', 'c0,C1', 'v0,V1', 'si')],
+              make_sq('', '', 'si'), 1.0)
+         ]
+    b = combine_terms([i for term in a for i in term.generate_singlet_adaptation()])
+    print_terms_ambit(b)
 
 
 # def test_contraction_categorized_5():

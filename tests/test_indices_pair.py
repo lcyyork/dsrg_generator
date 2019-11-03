@@ -176,3 +176,29 @@ def test_base_strong_generating_set_5():
     asym3 = ([0, 1, 3, 4], [Permutation(0, 1)(6, 7), Permutation(1, 2)(6, 7), Permutation(3, 4)(6, 7),
                             Permutation(4, 5)(6, 7), Permutation(7)(0, 3)(1, 4)(2, 5)])
     assert a.base_strong_generating_set(True) == asym3
+
+
+def test_singlet_adaptation():
+    from dsrg_generator.Index import Index
+    a = IndicesPair("P0,P1", "G0,P2", 'si')
+    replacement = {Index("P0"): Index("p0"),
+                   Index("P1"): Index("p2"),
+                   Index("G0"): Index("g9"),
+                   Index("P2"): Index("p8")}
+    b = list(a.generate_singlet_adaptation(replacement))
+    print(b)
+
+    a = IndicesPair("h0,P0,P1", "a1,G0,P2", 'si')
+    replacement = {Index("P0"): Index("p0"),
+                   Index("P1"): Index("p2"),
+                   Index("G0"): Index("g9"),
+                   Index("P2"): Index("p8"),
+                   Index("h0"): Index("h0"),
+                   Index("a1"): Index("a1")}
+    b = list(a.generate_singlet_adaptation(replacement))
+    print(b)
+
+    a = IndicesPair("", "", 'si')
+    b = list(a.generate_singlet_adaptation({}))
+    print(b)
+

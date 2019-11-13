@@ -52,6 +52,10 @@ class IndicesPair:
             raise ValueError(f"Invalid quest because n_lower ({self.n_lower}) != n_upper ({self.n_upper}).")
         return self.n_lower
 
+    @property
+    def indices_set(self):
+        return self.upper_indices.indices_set | self.lower_indices.indices_set
+
     def indices(self, upper_first=True):
         if upper_first:
             return self.upper_indices.indices + self.lower_indices.indices

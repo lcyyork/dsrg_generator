@@ -507,3 +507,51 @@ def test_make_excitation():
 
 def test_make_one_body():
     pass
+
+
+def test_contraction_paths():
+    t = Term([make_tensor('H', 'c0,v0', 'v1,v2', 'so'),
+              make_tensor('t', 'c1,c2', 'v2,v3', 'so'),
+              make_tensor('t', 'c3,c1,c2', 'v1,v4,v5', 'so'),
+              make_tensor('t', 'c3,c5,c6', 'v6,v4,v5', 'so')],
+             make_sq("v0,v3,v6", "c0,c5,c6", 'so')).canonicalize()
+    for i in t.contraction_paths():
+        print(i)
+    # print(t.optimal_contraction_cost())
+    #
+    # t = Term([make_tensor('H', 'v3,v4', 'v0,c3', 'so'),
+    #           make_tensor('t', 'c4,c5', 'v5,v6', 'so'),
+    #           make_tensor('t', 'c0,c1,c2', 'v4,v5,v6', 'so'),
+    #           make_tensor('t', 'c3,c4,c5', 'v1,v2,v3', 'so')],
+    #          make_sq("v0,v1,v2", "c0,c1,c2", 'so')).canonicalize()
+    # print(t.optimal_contraction_cost())
+
+    t = Term([make_tensor('H', 'v4,v5', 'v2,v3', 'so'),
+              make_tensor('t', 'c1,c2', 'v0,v3', 'so'),
+              make_tensor('t', 'c0,c3', 'v1,v6', 'so'),
+              make_tensor('t', 'c1,c2,c3', 'v4,v5,v6', 'so')],
+             make_sq("v0,v1", "c0,v2", 'so'))
+    print()
+    for i in t.contraction_paths():
+        print(i)
+
+    t = Term([make_tensor('H', 'c4,c5', 'v3,c3', 'so'),
+              make_tensor('t', 'c1,c2', 'v3,v5', 'so'),
+              make_tensor('t', 'c0,c6', 'v0,v4', 'so'),
+              make_tensor('t', 'c4,c5,c7', 'v1,v2,v6', 'so'),
+              make_tensor('t', 'c3,c6,c7', 'v4,v5,v6', 'so')],
+             make_sq("v0,v1,v2", "c0,c1,c2", 'so'))
+    print()
+    print(t.optimal_contraction_cost())
+    # for i in t.contraction_paths():
+    #     print(i)
+
+    # simply reverse the h-h line to v-v line
+    t = Term([make_tensor('H', 'c4,v9', 'v3,v8', 'so'),
+              make_tensor('t', 'c1,c8', 'v3,v2', 'so'),
+              make_tensor('t', 'c0,c6', 'v0,v4', 'so'),
+              make_tensor('t', 'c4,c2,c7', 'v1,v9,v6', 'so'),
+              make_tensor('t', 'c8,c6,c7', 'v4,v8,v6', 'so')],
+             make_sq("v0,v1,v2", "c0,c1,c2", 'so'))
+    print()
+    print(t.optimal_contraction_cost())

@@ -1,6 +1,6 @@
-from collections import defaultdict
+from collections import defaultdict, Counter
 from fractions import Fraction
-from itertools import product, groupby, accumulate
+from itertools import product, groupby, accumulate, permutations
 from math import factorial, isclose
 from sympy.combinatorics.tensor_can import canonicalize
 from sympy.combinatorics import Permutation
@@ -10,6 +10,7 @@ from dsrg_generator.Index import Index
 from dsrg_generator.Indices import IndicesSpinOrbital, IndicesSpinIntegrated
 from dsrg_generator.Tensor import Tensor, Cumulant, ClusterAmplitude, Kronecker
 from dsrg_generator.SQOperator import SecondQuantizedOperator
+from dsrg_generator.mo_space import MOSpaceCounter
 
 
 def hamiltonian_operator(k, start=0, indices_type='spin-orbital'):
@@ -1188,6 +1189,79 @@ class Term:
         except ValueError:
             term = self.coeff, list_of_tensors, self.sq_op
         return term
+
+    def contraction_paths(self):
+        """
+        Compute all possible contraction paths for this term.
+        :return: (max computational cost, max memory cost, contraction path) for each contraction path
+        """
+        for path in Term._contraction_path([(t.indices_set, t) for t in self.list_of_tensors],
+                                           (None, None, None)):
+            yield path
+
+    @staticmethod
+    def _contraction_path(tensors_left, tensors_so_far):
+        """
+        Compute all possible contraction path.
+        :param tensors_left: a list of tuples [(set of open indices, list of contracted tensors)]
+        :param tensors_so_far: a tuple of (max computational cost, max memory cost, contraction path)
+        :return: (max computational cost, max memory cost, contraction path) for each possibility
+        """
+        size = len(tensors_left)
+        if size == 1:
+            yield tensors_so_far
+
+        for i in range(size):
+            i_indices_set, i_tensors = tensors_left[i]
+            for j in range(i + 1, size):
+                j_indices_set, j_tensors = tensors_left[j]
+                compute, storage, open_indices = Term._contraction_cost(i_indices_set, j_indices_set)
+
+                ij_tensors = (i_tensors, j_tensors)
+                max_compute, max_storage, path = tensors_so_far
+                if max_compute is None or compute > max_compute:
+                    max_compute = compute
+                if max_storage is None or storage > max_storage:
+                    max_storage = storage
+                path = ij_tensors if path is None or size == 2 else (path, ij_tensors)
+
+                yield from Term._contraction_path([tensors_left[n] for n in range(size)
+                                                   if n != i and n != j] + [(open_indices, ij_tensors)],
+                                                  (max_compute, max_storage, path))
+
+    @staticmethod
+    def _contraction_cost(indices_set1, indices_set2):
+        """
+        Compute the cost when two sets of indices contract with each other.
+        :param indices_set1: indices set 1
+        :param indices_set2: indices set 2
+        :return: the computational cost, storage cost, and open indices set
+        """
+        if (not isinstance(indices_set1, set)) or (not isinstance(indices_set2, set)):
+            raise ValueError("Expected 'set' type")
+
+        open_indices = indices_set1 ^ indices_set2
+        all_indices = indices_set2 | indices_set1
+
+        compute = [i.space.lower() for i in all_indices]
+        storage = [i.space.lower() for i in open_indices]
+
+        return MOSpaceCounter(Counter(compute)), MOSpaceCounter(Counter(storage)), open_indices
+
+    def optimal_contraction_cost(self):
+        """
+        Compute the optimal contraction based on computational cost and storage cost.
+        :return: the path and minimum cost
+        """
+        opt_compute, opt_storage = None, None
+        for compute_cost, storage_cost, path in self.contraction_paths():
+            if opt_compute is None or compute_cost < opt_compute[0]:
+                opt_compute = (compute_cost, path)
+
+            if opt_storage is None or storage_cost < opt_storage[0]:
+                opt_storage = (storage_cost, path)
+
+        return opt_compute, opt_storage
 
 #
 # def read_latex_term(line):

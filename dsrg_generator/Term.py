@@ -1195,8 +1195,11 @@ class Term:
         Compute all possible contraction paths for this term.
         :return: (max computational cost, max memory cost, contraction path) for each contraction path
         """
+        tensors = self.list_of_tensors
+        cost = Counter([i.space.lower() for i in tensors[0].indices_set]) if len(tensors) == 1 else {'v': 0, 'c': 0}
+
         for path in Term._contraction_path([(t.indices_set, t) for t in self.list_of_tensors],
-                                           (None, None, None)):
+                                           (MOSpaceCounter(cost), MOSpaceCounter(cost), None)):
             yield path
 
     @staticmethod
@@ -1219,9 +1222,9 @@ class Term:
 
                 ij_tensors = (i_tensors, j_tensors)
                 max_compute, max_storage, path = tensors_so_far
-                if max_compute is None or compute > max_compute:
+                if compute > max_compute:
                     max_compute = compute
-                if max_storage is None or storage > max_storage:
+                if storage > max_storage:
                     max_storage = storage
                 path = ij_tensors if path is None or size == 2 else (path, ij_tensors)
 
@@ -1253,6 +1256,11 @@ class Term:
         Compute the optimal contraction based on computational cost and storage cost.
         :return: the path and minimum cost
         """
+        tensors = self.list_of_tensors
+        if len(tensors) == 1:
+            cost0 = Counter([i.space.lower() for i in tensors[0].indices_set])
+            return (MOSpaceCounter(cost0), None), (MOSpaceCounter(cost0), None)
+
         opt_compute, opt_storage = None, None
         for compute_cost, storage_cost, path in self.contraction_paths():
             if opt_compute is None or compute_cost < opt_compute[0]:

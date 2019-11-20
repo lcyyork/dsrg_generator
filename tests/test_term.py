@@ -555,3 +555,8 @@ def test_contraction_paths():
              make_sq("v0,v1,v2", "c0,c1,c2", 'so'))
     print()
     print(t.optimal_contraction_cost())
+
+    t = Term([make_tensor('H', 'c4,c5', 'v3,c3', 'so')],
+             make_sq('c4,c5', 'v3,c3', 'so'))
+    print()
+    print(t.optimal_contraction_cost())

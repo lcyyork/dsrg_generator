@@ -90,7 +90,7 @@ def cluster_operator(k, start=0, excitation=True, name='T', scale_factor=1.0,
     particle = [f"{particle_label}{i}" for i in range(r0, r1)]
     first = particle if excitation else hole
     second = hole if excitation else particle
-    tensor = Tensor.make_tensor('t', second, first, indices_type, name)
+    tensor = Tensor.make_tensor('t', hole, particle, indices_type, name)
     sq_op = SecondQuantizedOperator(first, second, indices_type)
     return Term([tensor], sq_op, scale_factor / coeff)
 

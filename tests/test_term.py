@@ -33,13 +33,21 @@ def test_init_4():
         assert Term([make_tensor('H', 'c0', 'g1'), make_tensor('t', 'c0', 't0')], make_sq('t0', 't1'))
 
 
-def test_init_5():
+def test_copy_1():
     # OK to have diagonal indices, but attributes not fully functional
     a = Term([make_tensor('H', 'g0', 'g0')], make_sq("g0", "g0"))
     b = Term.from_term(a, flip_sign=True)
     assert a.coeff == -b.coeff
     b.coeff = 1
     assert a == b
+
+
+def test_copy_2():
+    # OK to have diagonal indices, but attributes not fully functional
+    a = Term([make_tensor('H', 'g0', 'g1')], make_sq("g1", "g0"))
+    b = Term.from_term(a, flip_sign=True, hc=True)
+    assert b.sq_op == make_sq("g0", "g1")
+    assert b.list_of_tensors == a.list_of_tensors
 
 
 def test_latex_1():

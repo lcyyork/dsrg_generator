@@ -69,9 +69,16 @@ class IndicesPair:
     def is_empty(self):
         return self.size == 0
 
-    def clone(self):
-        """ Make a copy. """
-        return self.__class__(self.upper_indices, self.lower_indices)
+    def clone(self, hc=False):
+        """
+        Make a copy of the IndicesPair and its derived class.
+        :param hc: take Hermitian conjugate if True
+        :return: a copy of the IndicesPair
+        """
+        if hc:
+            return self.__class__(self.lower_indices, self.upper_indices)
+        else:
+            return self.__class__(self.upper_indices, self.lower_indices)
 
     def _is_valid_operand_indices(self, other):
         if self.indices_type != other.indices_type:

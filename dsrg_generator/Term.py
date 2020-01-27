@@ -171,10 +171,16 @@ class Term:
         self._diagonal_indices = {i: connection[i] for i in diagonal_indices}
 
     @classmethod
-    def from_term(cls, term, flip_sign=False):
-        """ Copy from a term. """
+    def from_term(cls, term, flip_sign=False, hc=False):
+        """
+        Copy from a term.
+        :param term: the original term object
+        :param flip_sign: Flip the coefficient sign of True
+        :param hc: take Hermitian conjugate of the operator part if True
+        :return: a copy of the term
+        """
         sign = -1 if flip_sign else 1
-        return cls(term.list_of_tensors, term.sq_op, sign * term.coeff)
+        return cls(term.list_of_tensors, term.sq_op.clone(hc), sign * term.coeff)
 
     @classmethod
     def make_empty(cls, indices_type='so'):
@@ -634,11 +640,12 @@ class Term:
 
         return list_of_tensors, replacement, replacement_diagonal
 
-    def canonicalize(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
+    def canonicalize(self, simplify_core_cumulant=True, remove_active_amplitudes=True, hermitian_tensor=True):
         """
         Bring the current term to canonical form.
         :param simplify_core_cumulant: change a cumulant labeled by core indices to a Kronecker delta
         :param remove_active_amplitudes: remove terms when its contains all-active amplitudes
+        :param hermitian_tensor: assume Hermitian Hamiltonian if True
         :return: the "canonical" form of this term
         """
         if len(self.diagonal_indices) != 0:
@@ -651,7 +658,7 @@ class Term:
             #   4) relabel tensors' indices
 
         else:
-            return self.canonicalize_sympy(simplify_core_cumulant, remove_active_amplitudes)
+            return self.canonicalize_sympy(simplify_core_cumulant, remove_active_amplitudes, hermitian_tensor)
 
     def canonicalize_simple(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
         """
@@ -671,11 +678,13 @@ class Term:
 
         return Term(list_of_tensors, sq_op, self.coeff * sign)
 
-    def canonicalize_sympy(self, simplify_core_cumulant=True, remove_active_amplitudes=True):
+    def canonicalize_sympy(self, simplify_core_cumulant=True, remove_active_amplitudes=True,
+                           hermitian_tensor=True):
         """
         Bring the current term to canonical form using SymPy.
         :param simplify_core_cumulant: change a cumulant labeled by core indices to a Kronecker delta
         :param remove_active_amplitudes: remove terms when its contains all-active amplitudes
+        :param hermitian_tensor: assume Hermitian Hamiltonian if True
         :return: the canonical form of this term
 
         Examples
@@ -755,7 +764,7 @@ class Term:
                                                                       key=lambda x: (x.name, x.n_body))]
         shift = 0
         for count in tensor_count:
-            base, gens = self.list_of_tensors[shift].base_strong_generating_set()
+            base, gens = self.list_of_tensors[shift].base_strong_generating_set(hermitian=hermitian_tensor)
             bsgs_list.append((base, gens, count, 0))
             shift += count
 

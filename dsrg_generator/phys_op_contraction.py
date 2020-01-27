@@ -23,12 +23,12 @@ from dsrg_generator.sqop_contraction import compute_operator_contractions
 from dsrg_generator.helper.Timer import Timer
 
 
-def multiprocessing_canonicalize_contractions(tensors, sq_op, coeff):
-    return Term(tensors, sq_op, coeff).canonicalize_sympy()
+def multiprocessing_canonicalize_contractions(tensors, sq_op, coeff, hermitian_tensor):
+    return Term(tensors, sq_op, coeff).canonicalize_sympy(hermitian_tensor)
 
 
 def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0,
-                   for_commutator=False, expand_hole=True, n_process=1):
+                   for_commutator=False, expand_hole=True, n_process=1, hermitian_tensor=True):
     """
     Contract a list of Term objects.
     :param terms: a list of Term objects to be contracted
@@ -39,6 +39,7 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
     :param for_commutator: compute only non-zero terms for commutators if True
     :param expand_hole: expand HoleDensity to Kronecker - Cumulant if True
     :param n_process: number of processes launched for tensor canonicalization
+    :param hermitian_tensor: assume tensors being Hermitian if True
     :return: a list of contracted and canonicalized Term objects
     """
     if len(terms) == 0:
@@ -84,17 +85,20 @@ def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0
             if count < batch_size:
                 continue
 
-            out += canonicalize_contractions_batch(n_process, contractions, tensors, coeff, True, chunk_size)
+            out += canonicalize_contractions_batch(n_process, contractions, tensors, coeff, True, chunk_size,
+                                                   hermitian_tensor)
             contractions = []
             count = 0
 
         chunk_size = int(sqrt(len(contractions)) / n_process) + 1
-        out += canonicalize_contractions_batch(n_process, contractions, tensors, coeff, False, chunk_size)
+        out += canonicalize_contractions_batch(n_process, contractions, tensors, coeff, False, chunk_size,
+                                               hermitian_tensor)
 
         return combine_terms(out)
 
 
-def canonicalize_contractions_batch(n_process, contractions, tensors, coeff, simplify, chunk_size):
+def canonicalize_contractions_batch(n_process, contractions, tensors, coeff, simplify, chunk_size,
+                                    hermitian_tensor=True):
     """
     Canonicalize a batch of contractions
     :param n_process: number of processes launched for tensor canonicalization
@@ -103,6 +107,7 @@ def canonicalize_contractions_batch(n_process, contractions, tensors, coeff, sim
     :param coeff: a scale factor for all contractions
     :param simplify: combine similar terms if True
     :param chunk_size: the chunk size for multiprocessing
+    :param hermitian_tensor: assume tensors being Hermitian if True
     :return: a list of simplified canonicalized terms
     """
     if len(contractions) == 0:
@@ -110,11 +115,12 @@ def canonicalize_contractions_batch(n_process, contractions, tensors, coeff, sim
 
     print("in func", len(contractions))
     if n_process == 1:
-        temp = [Term(tensors + densities, sq_op, sign * coeff).canonicalize_sympy()
+        temp = [Term(tensors + densities, sq_op, sign * coeff).canonicalize_sympy(hermitian_tensor=hermitian_tensor)
                 for sign, densities, sq_op in contractions]
     else:
         with multiprocessing.Pool(n_process, maxtasksperchild=1000) as pool:
-            tasks = [(multiprocessing_canonicalize_contractions, (tensors + densities, sq_op, sign * coeff))
+            tasks = [(multiprocessing_canonicalize_contractions,
+                      (tensors + densities, sq_op, sign * coeff, hermitian_tensor))
                      for sign, densities, sq_op in contractions]
             imap_unordered_it = pool.imap_unordered(calculate_star, tasks, chunksize=chunk_size)
             temp = [x for x in imap_unordered_it]
@@ -149,8 +155,8 @@ def combine_terms(terms):
     return sorted(out)
 
 
-def single_commutator(left, right, max_cu=3, max_n_open=6, min_n_open=0,
-                      scale_factor=1.0, for_commutator=True, expand_hole=True, n_process=1):
+def single_commutator(left, right, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0,
+                      for_commutator=True, expand_hole=True, n_process=1, hermitian_tensor=True):
     """
     Compute a single commutator of the form [left, right].
     :param left: left term
@@ -162,15 +168,16 @@ def single_commutator(left, right, max_cu=3, max_n_open=6, min_n_open=0,
     :param for_commutator: compute only non-zero terms for commutators if True
     :param expand_hole: expand HoleDensity to (Kronecker - Cumulant) if True
     :param n_process: number of processes launched for tensor canonicalization
+    :param hermitian_tensor: assume tensors being Hermitian if True
     :return: a list of contracted canonicalized Term objects
     """
     if for_commutator and (left.sq_op.is_empty() or right.sq_op.is_empty()):
         return []
 
     terms = contract_terms([left, right], max_cu, max_n_open, min_n_open, scale_factor,
-                           for_commutator, expand_hole, n_process) \
+                           for_commutator, expand_hole, n_process, hermitian_tensor) \
         + contract_terms([right, left], max_cu, max_n_open, min_n_open, -scale_factor,
-                         for_commutator, expand_hole, n_process)
+                         for_commutator, expand_hole, n_process, hermitian_tensor)
     return combine_terms(terms)
 
 
@@ -194,8 +201,8 @@ def cluster_operators(levels, start, unitary=True, single_reference=True):
     return amps
 
 
-def linear_commutator_amp(left_terms, cluster_levels, scale_factor, min_n_open, max_n_open, start,
-                          n_process=1, unitary=True, max_cu=3, for_commutator=True, single_reference=True):
+def linear_commutator_amp(left_terms, cluster_levels, scale_factor, min_n_open, max_n_open, start, n_process=1,
+                          unitary=True, max_cu=3, for_commutator=True, single_reference=True, hermitian_tensor=True):
     """
     Compute the commutator between the input list of terms and the cluster operators [left_term, T].
     :param left_terms: a list of Terms appear at the first entry of the commutator
@@ -209,14 +216,15 @@ def linear_commutator_amp(left_terms, cluster_levels, scale_factor, min_n_open, 
     :param max_cu: the max cumulant level
     :param for_commutator: ignore disconnected terms if True
     :param single_reference: use single-reference labels if True
+    :param hermitian_tensor: assume tensors being Hermitian if True
     :return: a list of contracted Term objects
     """
     return linear_commutator(left_terms, cluster_operators(cluster_levels, start, unitary, single_reference),
-                             scale_factor, min_n_open, max_n_open, max_cu, n_process, for_commutator)
+                             scale_factor, min_n_open, max_n_open, max_cu, n_process, for_commutator, hermitian_tensor)
 
 
 def linear_commutator(left_terms, right_terms, scale_factor, min_n_open, max_n_open,
-                      max_cu=3, n_process=1, for_commutator=True):
+                      max_cu=3, n_process=1, for_commutator=True, hermitian_tensor=True):
     """
     Compute the commutator between left and right terms.
     :param left_terms: a list of Term objects at the first entry of the commutator
@@ -227,17 +235,19 @@ def linear_commutator(left_terms, right_terms, scale_factor, min_n_open, max_n_o
     :param max_cu: the max cumulant level
     :param n_process: the number of process for multiprocessing
     :param for_commutator: ignore disconnected terms if True
+    :param hermitian_tensor: assume tensors being Hermitian if True
     :return: a list of contracted Term objects
     """
     out = []
     for left in left_terms:
         for right in right_terms:
             out += single_commutator(left, right, max_cu, max_n_open, min_n_open, scale_factor,
-                                     for_commutator, n_process=n_process)
+                                     for_commutator, n_process=n_process, hermitian_tensor=hermitian_tensor)
     return combine_terms(out)
 
 
-def recursive_single_commutator(terms, max_cu_levels, n_opens, for_commutator=True, expand_hole=True, n_process=1):
+def recursive_single_commutator(terms, max_cu_levels, n_opens, for_commutator=True, expand_hole=True,
+                                n_process=1, hermitian_tensor=True):
     """
     Compute nested commutators using recursive single commutator formalism.
     :param terms: a list of terms, computed as [[...[[term_0, term_1], term_2], ...], term_k]
@@ -246,6 +256,7 @@ def recursive_single_commutator(terms, max_cu_levels, n_opens, for_commutator=Tr
     :param for_commutator: compute only non-zero terms for commutators if True
     :param expand_hole: expand HoleDensity to (Kronecker - Cumulant) if True
     :param n_process: number of processes launched for tensor canonicalization
+    :param hermitian_tensor: assume tensors being Hermitian if True
     :return: a map of nested level to a list of contracted canonicalized Term objects
     """
     n_terms = len(terms)
@@ -280,8 +291,8 @@ def recursive_single_commutator(terms, max_cu_levels, n_opens, for_commutator=Tr
         min_n_open, max_n_open = n_opens[i - 1]
 
         for left in left_pool:
-            out[i] += single_commutator(left, right, max_cu, max_n_open, min_n_open,
-                                        1.0, for_commutator, expand_hole, n_process)
+            out[i] += single_commutator(left, right, max_cu, max_n_open, min_n_open, 1.0,
+                                        for_commutator, expand_hole, n_process, hermitian_tensor)
 
         out[i] = combine_terms(out[i])
         left_pool = out[i]
@@ -290,7 +301,7 @@ def recursive_single_commutator(terms, max_cu_levels, n_opens, for_commutator=Tr
 
 
 def bch_cc_rsc(nested_level, cluster_levels, max_cu_levels, n_opens, for_commutator=True,
-               expand_hole=True, single_reference=False, unitary=False, n_process=1):
+               expand_hole=True, single_reference=False, unitary=False, n_process=1, hermitian_tensor=True):
     """
     Compute the BCH nested commutator in coupled cluster theory using recursive commutator formalism.
     :param nested_level: the level of nested commutator
@@ -302,6 +313,7 @@ def bch_cc_rsc(nested_level, cluster_levels, max_cu_levels, n_opens, for_commuta
     :param single_reference: use single-reference amplitudes if True
     :param unitary: use unitary formalism if True
     :param n_process: number of processes launched for tensor canonicalization
+    :param hermitian_tensor: assume tensors being Hermitian if True
     :return: a map of nested level to a list of contracted canonicalized Term objects
     """
     if not isinstance(nested_level, int):
@@ -346,8 +358,8 @@ def bch_cc_rsc(nested_level, cluster_levels, max_cu_levels, n_opens, for_commuta
 
         for left in left_pool:
             for right in amps[i - 1]:
-                out[i] += single_commutator(left, right, max_cu, max_n_open, min_n_open,
-                                            factor, for_commutator, expand_hole, n_process)
+                out[i] += single_commutator(left, right, max_cu, max_n_open, min_n_open, factor,
+                                            for_commutator, expand_hole, n_process, hermitian_tensor)
 
         out[i] = combine_terms([Term.from_term(term) for term in out[i]])
         left_pool = [Term.from_term(term) for term in out[i]]
@@ -369,8 +381,8 @@ def sympy_nested_commutator_recursive(level, a, b):
         return Commutator(sympy_nested_commutator_recursive(i, a, b), b)
 
 
-def nested_commutator_cc(nested_level, cluster_levels, max_cu=3, max_n_open=6, min_n_open=0,
-                         for_commutator=True, expand_hole=True, single_reference=False, unitary=False, n_process=1):
+def nested_commutator_cc(nested_level, cluster_levels, max_cu=3, max_n_open=6, min_n_open=0, for_commutator=True,
+                         expand_hole=True, single_reference=False, unitary=False, n_process=1, hermitian_tensor=True):
     """
     Compute the BCH nested commutator in coupled cluster theory.
     :param nested_level: the level of nested commutator
@@ -383,6 +395,7 @@ def nested_commutator_cc(nested_level, cluster_levels, max_cu=3, max_n_open=6, m
     :param single_reference: use single-reference amplitudes if True
     :param unitary: use unitary formalism if True
     :param n_process: number of processes launched for tensor canonicalization
+    :param hermitian_tensor: assume tensors being Hermitian if True
     :return: a list of contracted canonicalized Term objects
     """
     if not isinstance(nested_level, int):
@@ -432,7 +445,7 @@ def nested_commutator_cc(nested_level, cluster_levels, max_cu=3, max_n_open=6, m
                 list_of_terms.append(hamiltonian_operator(n_body))
 
         out += contract_terms(list_of_terms, max_cu, max_n_open, min_n_open, factor,
-                              for_commutator, expand_hole, n_process)
+                              for_commutator, expand_hole, n_process, hermitian_tensor)
 
     return combine_terms(out)
 

@@ -24,7 +24,7 @@ from dsrg_generator.helper.Timer import Timer
 
 
 def multiprocessing_canonicalize_contractions(tensors, sq_op, coeff, hermitian_tensor):
-    return Term(tensors, sq_op, coeff).canonicalize_sympy(hermitian_tensor)
+    return Term(tensors, sq_op, coeff).canonicalize_sympy(hermitian_tensor=hermitian_tensor)
 
 
 def contract_terms(terms, max_cu=3, max_n_open=6, min_n_open=0, scale_factor=1.0,
